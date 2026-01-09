@@ -1,4 +1,5 @@
-use ssfmt::ast::{Condition, DatePart, DigitPlaceholder, FormatPart, NamedColor};
+use ssfmt::ast::{Condition, DatePart, DigitPlaceholder, FormatPart, NamedColor, Section};
+use ssfmt::NumberFormat;
 
 #[test]
 fn test_named_color_from_str() {
@@ -29,4 +30,34 @@ fn test_format_part_is_date_part() {
 
     assert!(year.is_date_part());
     assert!(!digit.is_date_part());
+}
+
+#[test]
+fn test_number_format_is_date_format() {
+    // A format with date parts should be detected as date format
+    let section = Section {
+        condition: None,
+        color: None,
+        parts: vec![
+            FormatPart::DatePart(DatePart::Year4),
+            FormatPart::Literal("-".into()),
+            FormatPart::DatePart(DatePart::Month2),
+        ],
+    };
+    let format = NumberFormat::from_sections(vec![section]);
+    assert!(format.is_date_format());
+}
+
+#[test]
+fn test_number_format_sections_limit() {
+    let sections: Vec<Section> = (0..5)
+        .map(|_| Section {
+            condition: None,
+            color: None,
+            parts: vec![],
+        })
+        .collect();
+    // Should only keep first 4 sections
+    let format = NumberFormat::from_sections(sections);
+    assert_eq!(format.sections().len(), 4);
 }
