@@ -64,3 +64,128 @@ impl Condition {
         }
     }
 }
+
+/// Digit placeholder type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DigitPlaceholder {
+    /// `0` - Display digit or zero
+    Zero,
+    /// `#` - Display digit or nothing
+    Hash,
+    /// `?` - Display digit or space
+    Question,
+}
+
+impl DigitPlaceholder {
+    /// Returns true if this placeholder requires a digit (shows 0 for missing).
+    pub fn is_required(&self) -> bool {
+        matches!(self, DigitPlaceholder::Zero)
+    }
+
+    /// Returns the character to display when no digit is present.
+    pub fn empty_char(&self) -> Option<char> {
+        match self {
+            DigitPlaceholder::Zero => Some('0'),
+            DigitPlaceholder::Hash => None,
+            DigitPlaceholder::Question => Some(' '),
+        }
+    }
+}
+
+/// Date/time format parts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatePart {
+    Year2,
+    Year4,
+    Month,
+    Month2,
+    MonthAbbr,
+    MonthFull,
+    MonthLetter,
+    Day,
+    Day2,
+    DayAbbr,
+    DayFull,
+    Hour,
+    Hour2,
+    Minute,
+    Minute2,
+    Second,
+    Second2,
+    SubSecond(u8),
+}
+
+/// AM/PM format style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmPmStyle {
+    Upper,
+    Lower,
+    ShortUpper,
+    ShortLower,
+}
+
+/// Elapsed time format part (for durations).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElapsedPart {
+    Hours,
+    Minutes,
+    Seconds,
+}
+
+/// Fraction denominator specification.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FractionDenom {
+    UpToDigits(u8),
+    Fixed(u32),
+}
+
+/// Locale code from format string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocaleCode {
+    pub currency: Option<String>,
+    pub lcid: Option<u32>,
+}
+
+/// A single part of a format section.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FormatPart {
+    Literal(String),
+    Digit(DigitPlaceholder),
+    DecimalPoint,
+    ThousandsSeparator,
+    Percent,
+    Scientific { upper: bool, show_plus: bool },
+    Fraction {
+        integer_digits: Vec<DigitPlaceholder>,
+        numerator_digits: Vec<DigitPlaceholder>,
+        denominator: FractionDenom,
+    },
+    DatePart(DatePart),
+    AmPm(AmPmStyle),
+    Elapsed(ElapsedPart),
+    TextPlaceholder,
+    Fill(char),
+    Skip(char),
+    Locale(LocaleCode),
+}
+
+impl FormatPart {
+    pub fn is_date_part(&self) -> bool {
+        matches!(
+            self,
+            FormatPart::DatePart(_) | FormatPart::AmPm(_) | FormatPart::Elapsed(_)
+        )
+    }
+
+    pub fn is_numeric_part(&self) -> bool {
+        matches!(
+            self,
+            FormatPart::Digit(_)
+                | FormatPart::DecimalPoint
+                | FormatPart::ThousandsSeparator
+                | FormatPart::Percent
+                | FormatPart::Scientific { .. }
+                | FormatPart::Fraction { .. }
+        )
+    }
+}
