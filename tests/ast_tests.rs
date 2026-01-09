@@ -1,4 +1,4 @@
-use ssfmt::ast::{Color, Condition, NamedColor};
+use ssfmt::ast::{Condition, NamedColor};
 
 #[test]
 fn test_named_color_from_str() {
