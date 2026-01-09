@@ -266,7 +266,9 @@ impl Section {
 
     /// Returns true if this section contains a text placeholder.
     pub fn has_text_placeholder(&self) -> bool {
-        self.parts.iter().any(|p| matches!(p, FormatPart::TextPlaceholder))
+        self.parts
+            .iter()
+            .any(|p| matches!(p, FormatPart::TextPlaceholder))
     }
 
     /// Returns true if this section contains a percent sign.
