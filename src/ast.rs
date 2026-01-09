@@ -240,3 +240,89 @@ impl FormatPart {
         )
     }
 }
+
+/// A single section of a format code.
+///
+/// Format codes can have up to 4 sections:
+/// 1. Positive numbers (or all numbers if only one section)
+/// 2. Negative numbers
+/// 3. Zero
+/// 4. Text
+#[derive(Debug, Clone, PartialEq)]
+pub struct Section {
+    /// Optional condition for this section (e.g., [>100])
+    pub condition: Option<Condition>,
+    /// Optional color for this section (e.g., [Red])
+    pub color: Option<Color>,
+    /// The format parts that make up this section
+    pub parts: Vec<FormatPart>,
+}
+
+impl Section {
+    /// Returns true if this section contains any date/time parts.
+    pub fn has_date_parts(&self) -> bool {
+        self.parts.iter().any(|p| p.is_date_part())
+    }
+
+    /// Returns true if this section contains a text placeholder.
+    pub fn has_text_placeholder(&self) -> bool {
+        self.parts.iter().any(|p| matches!(p, FormatPart::TextPlaceholder))
+    }
+
+    /// Returns true if this section contains a percent sign.
+    pub fn has_percent(&self) -> bool {
+        self.parts.iter().any(|p| matches!(p, FormatPart::Percent))
+    }
+}
+
+/// A parsed number format code.
+///
+/// This is the main type returned by parsing. It can be reused to format
+/// multiple values efficiently.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NumberFormat {
+    sections: Vec<Section>,
+}
+
+impl NumberFormat {
+    /// Create a NumberFormat from parsed sections.
+    /// Limits to 4 sections maximum per Excel spec.
+    pub fn from_sections(sections: Vec<Section>) -> Self {
+        let sections = if sections.len() > 4 {
+            sections.into_iter().take(4).collect()
+        } else {
+            sections
+        };
+        NumberFormat { sections }
+    }
+
+    /// Get the sections of this format.
+    pub fn sections(&self) -> &[Section] {
+        &self.sections
+    }
+
+    /// Returns true if this format contains date/time parts.
+    pub fn is_date_format(&self) -> bool {
+        self.sections.iter().any(|s| s.has_date_parts())
+    }
+
+    /// Returns true if this is a text-only format.
+    pub fn is_text_format(&self) -> bool {
+        self.sections.len() == 1 && self.sections[0].has_text_placeholder()
+    }
+
+    /// Returns true if this format contains a percent sign.
+    pub fn is_percentage(&self) -> bool {
+        self.sections.iter().any(|s| s.has_percent())
+    }
+
+    /// Returns true if any section has a color.
+    pub fn has_color(&self) -> bool {
+        self.sections.iter().any(|s| s.color.is_some())
+    }
+
+    /// Returns true if any section has a condition.
+    pub fn has_condition(&self) -> bool {
+        self.sections.iter().any(|s| s.condition.is_some())
+    }
+}
