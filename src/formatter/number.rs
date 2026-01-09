@@ -193,9 +193,7 @@ fn format_with_placeholders(value: f64, analysis: &FormatAnalysis, opts: &Format
         let decimal_str = format_decimal(decimal_part, &analysis.decimal_placeholders, opts);
         format!(
             "{}{}{}",
-            integer_str,
-            opts.locale.decimal_separator,
-            decimal_str
+            integer_str, opts.locale.decimal_separator, decimal_str
         )
     } else {
         integer_str
@@ -299,7 +297,11 @@ fn format_decimal(value: f64, placeholders: &[DigitPlaceholder], _opts: &FormatO
 }
 
 /// Build the final result string with prefix and suffix parts.
-fn build_result(analysis: &FormatAnalysis, formatted_number: &str, _opts: &FormatOptions) -> String {
+fn build_result(
+    analysis: &FormatAnalysis,
+    formatted_number: &str,
+    _opts: &FormatOptions,
+) -> String {
     let mut result = String::new();
 
     // Add prefix parts

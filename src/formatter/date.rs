@@ -13,7 +13,10 @@ pub fn format_date(
     opts: &FormatOptions,
 ) -> Result<String, FormatError> {
     // Check if there's an AM/PM indicator in the format
-    let has_ampm = section.parts.iter().any(|p| matches!(p, FormatPart::AmPm(_)));
+    let has_ampm = section
+        .parts
+        .iter()
+        .any(|p| matches!(p, FormatPart::AmPm(_)));
 
     // Get date components
     // For time-only values (serial < 1), use a default date since we only need time
@@ -91,6 +94,7 @@ pub fn format_date(
 }
 
 /// Format a single date/time part.
+#[allow(clippy::too_many_arguments)]
 fn format_date_part(
     part: DatePart,
     year: i32,
@@ -133,19 +137,11 @@ fn format_date_part(
 
         // Hour formatting
         DatePart::Hour => {
-            let h = if has_ampm {
-                to_12_hour(hour)
-            } else {
-                hour
-            };
+            let h = if has_ampm { to_12_hour(hour) } else { hour };
             format!("{}", h)
         }
         DatePart::Hour2 => {
-            let h = if has_ampm {
-                to_12_hour(hour)
-            } else {
-                hour
-            };
+            let h = if has_ampm { to_12_hour(hour) } else { hour };
             format!("{:02}", h)
         }
 

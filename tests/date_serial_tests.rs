@@ -1,4 +1,4 @@
-use ssfmt::date_serial::{serial_to_date, date_to_serial};
+use ssfmt::date_serial::{date_to_serial, serial_to_date};
 use ssfmt::DateSystem;
 
 #[test]

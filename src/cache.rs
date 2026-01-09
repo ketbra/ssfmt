@@ -16,9 +16,8 @@ const CACHE_SIZE: usize = 100;
 pub fn get_or_parse(format_code: &str) -> Result<NumberFormat, ParseError> {
     let mut cache_guard = CACHE.lock().unwrap();
 
-    let cache = cache_guard.get_or_insert_with(|| {
-        LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap())
-    });
+    let cache =
+        cache_guard.get_or_insert_with(|| LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap()));
 
     if let Some(fmt) = cache.get(format_code) {
         return Ok(fmt.clone());

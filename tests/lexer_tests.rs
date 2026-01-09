@@ -194,10 +194,7 @@ fn test_lex_am_pm_short() {
     assert_eq!(lexer.next_token().unwrap().token, Token::Month);
     assert_eq!(lexer.next_token().unwrap().token, Token::Month);
     assert_eq!(lexer.next_token().unwrap().token, Token::Literal(' '));
-    assert_eq!(
-        lexer.next_token().unwrap().token,
-        Token::AmPm("A/P".into())
-    );
+    assert_eq!(lexer.next_token().unwrap().token, Token::AmPm("A/P".into()));
     assert_eq!(lexer.next_token().unwrap().token, Token::Eof);
 }
 

@@ -270,23 +270,44 @@ mod tests {
     #[test]
     fn test_serial_to_date_1900_early() {
         // Day 1 = Jan 1, 1900
-        assert_eq!(serial_to_date(1.0, DateSystem::Date1900), Some((1900, 1, 1)));
+        assert_eq!(
+            serial_to_date(1.0, DateSystem::Date1900),
+            Some((1900, 1, 1))
+        );
         // Day 2 = Jan 2, 1900
-        assert_eq!(serial_to_date(2.0, DateSystem::Date1900), Some((1900, 1, 2)));
+        assert_eq!(
+            serial_to_date(2.0, DateSystem::Date1900),
+            Some((1900, 1, 2))
+        );
         // Day 31 = Jan 31, 1900
-        assert_eq!(serial_to_date(31.0, DateSystem::Date1900), Some((1900, 1, 31)));
+        assert_eq!(
+            serial_to_date(31.0, DateSystem::Date1900),
+            Some((1900, 1, 31))
+        );
         // Day 32 = Feb 1, 1900
-        assert_eq!(serial_to_date(32.0, DateSystem::Date1900), Some((1900, 2, 1)));
+        assert_eq!(
+            serial_to_date(32.0, DateSystem::Date1900),
+            Some((1900, 2, 1))
+        );
     }
 
     #[test]
     fn test_serial_to_date_leap_year_bug() {
         // Day 59 = Feb 28, 1900
-        assert_eq!(serial_to_date(59.0, DateSystem::Date1900), Some((1900, 2, 28)));
+        assert_eq!(
+            serial_to_date(59.0, DateSystem::Date1900),
+            Some((1900, 2, 28))
+        );
         // Day 60 = Feb 29, 1900 (Excel's bug - this date doesn't exist)
-        assert_eq!(serial_to_date(60.0, DateSystem::Date1900), Some((1900, 2, 29)));
+        assert_eq!(
+            serial_to_date(60.0, DateSystem::Date1900),
+            Some((1900, 2, 29))
+        );
         // Day 61 = Mar 1, 1900
-        assert_eq!(serial_to_date(61.0, DateSystem::Date1900), Some((1900, 3, 1)));
+        assert_eq!(
+            serial_to_date(61.0, DateSystem::Date1900),
+            Some((1900, 3, 1))
+        );
     }
 
     #[test]
@@ -301,7 +322,14 @@ mod tests {
         ] {
             let serial = date_to_serial(y, m, d, DateSystem::Date1900);
             let (y2, m2, d2) = serial_to_date(serial, DateSystem::Date1900).unwrap();
-            assert_eq!((y, m, d), (y2, m2, d2), "Roundtrip failed for {}-{}-{}", y, m, d);
+            assert_eq!(
+                (y, m, d),
+                (y2, m2, d2),
+                "Roundtrip failed for {}-{}-{}",
+                y,
+                m,
+                d
+            );
         }
     }
 }
