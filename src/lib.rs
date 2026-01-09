@@ -18,4 +18,4 @@ mod parser;
 pub use ast::{NumberFormat, Section};
 pub use error::{FormatError, ParseError};
 // pub use options::{DateSystem, FormatOptions};
-// pub use value::Value;
+pub use value::Value;
