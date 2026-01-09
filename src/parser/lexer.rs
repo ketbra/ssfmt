@@ -242,27 +242,11 @@ impl<'a> Lexer<'a> {
     fn try_match_am_pm(&mut self) -> Option<SpannedToken> {
         let remaining = self.remaining();
         let start = self.position;
-
-        // Try to match AM/PM patterns (case-insensitive)
-        // Order matters: try longer patterns first
-        let patterns = ["AM/PM", "am/pm", "Am/Pm", "A/P", "a/p"];
-
-        for pattern in patterns {
-            if remaining.starts_with(pattern) {
-                self.position += pattern.len();
-                return Some(SpannedToken {
-                    token: Token::AmPm(pattern.to_string()),
-                    start,
-                    end: self.position,
-                });
-            }
-        }
-
-        // Try case-insensitive match for AM/PM and A/P
         let upper = remaining.to_uppercase();
+
         if upper.starts_with("AM/PM") {
             let matched: String = remaining.chars().take(5).collect();
-            self.position += 5;
+            self.position += matched.len();
             return Some(SpannedToken {
                 token: Token::AmPm(matched),
                 start,
@@ -271,14 +255,13 @@ impl<'a> Lexer<'a> {
         }
         if upper.starts_with("A/P") {
             let matched: String = remaining.chars().take(3).collect();
-            self.position += 3;
+            self.position += matched.len();
             return Some(SpannedToken {
                 token: Token::AmPm(matched),
                 start,
                 end: self.position,
             });
         }
-
         None
     }
 
