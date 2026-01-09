@@ -13,7 +13,7 @@ pub mod date_serial;
 mod cache;
 mod formatter;
 mod locale;
-mod parser;
+pub mod parser;
 
 // Re-exports will be added once types are defined:
 pub use ast::{NumberFormat, Section};
