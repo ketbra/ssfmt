@@ -95,40 +95,65 @@ impl DigitPlaceholder {
 /// Date/time format parts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatePart {
+    /// `yy` - Two-digit year
     Year2,
+    /// `yyyy` - Four-digit year
     Year4,
+    /// `m` - Month as number without leading zero (1-12)
     Month,
+    /// `mm` - Month as number with leading zero (01-12)
     Month2,
+    /// `mmm` - Month as abbreviated name (Jan, Feb, etc.)
     MonthAbbr,
+    /// `mmmm` - Month as full name (January, February, etc.)
     MonthFull,
+    /// `mmmmm` - Month as single letter (J, F, M, etc.)
     MonthLetter,
+    /// `d` - Day of month without leading zero (1-31)
     Day,
+    /// `dd` - Day of month with leading zero (01-31)
     Day2,
+    /// `ddd` - Day of week as abbreviated name (Sun, Mon, etc.)
     DayAbbr,
+    /// `dddd` - Day of week as full name (Sunday, Monday, etc.)
     DayFull,
+    /// `h` - Hour without leading zero (0-23 or 1-12 with AM/PM)
     Hour,
+    /// `hh` - Hour with leading zero (00-23 or 01-12 with AM/PM)
     Hour2,
+    /// `m` - Minute without leading zero (0-59), when following h/hh
     Minute,
+    /// `mm` - Minute with leading zero (00-59), when following h/hh
     Minute2,
+    /// `s` - Second without leading zero (0-59)
     Second,
+    /// `ss` - Second with leading zero (00-59)
     Second2,
+    /// `.0`, `.00`, etc. - Fractional seconds with specified decimal places
     SubSecond(u8),
 }
 
 /// AM/PM format style.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AmPmStyle {
+    /// `AM/PM` - Uppercase AM or PM
     Upper,
+    /// `am/pm` - Lowercase am or pm
     Lower,
+    /// `A/P` - Uppercase single letter A or P
     ShortUpper,
+    /// `a/p` - Lowercase single letter a or p
     ShortLower,
 }
 
 /// Elapsed time format part (for durations).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElapsedPart {
+    /// `[h]` - Total elapsed hours (can exceed 24)
     Hours,
+    /// `[m]` - Total elapsed minutes (can exceed 60)
     Minutes,
+    /// `[s]` - Total elapsed seconds (can exceed 60)
     Seconds,
 }
 
@@ -142,34 +167,59 @@ pub enum FractionDenom {
 /// Locale code from format string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocaleCode {
+    /// Currency symbol to display (e.g., "$", "€", "£")
     pub currency: Option<String>,
+    /// Windows Locale Identifier for language/region-specific formatting
     pub lcid: Option<u32>,
 }
 
 /// A single part of a format section.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FormatPart {
+    /// Literal text to display as-is
     Literal(String),
+    /// Digit placeholder (0, #, or ?)
     Digit(DigitPlaceholder),
+    /// Decimal point separator
     DecimalPoint,
+    /// Thousands grouping separator (comma in US locale)
     ThousandsSeparator,
+    /// Percent sign - multiplies value by 100
     Percent,
-    Scientific { upper: bool, show_plus: bool },
+    /// Scientific notation (E+, E-, e+, e-)
+    Scientific {
+        /// True for uppercase E, false for lowercase e
+        upper: bool,
+        /// True to always show sign, false for minus only
+        show_plus: bool,
+    },
+    /// Fraction format (e.g., # #/# or # ??/??)
     Fraction {
+        /// Digit placeholders for integer part
         integer_digits: Vec<DigitPlaceholder>,
+        /// Digit placeholders for numerator
         numerator_digits: Vec<DigitPlaceholder>,
+        /// Denominator specification (fixed or up to N digits)
         denominator: FractionDenom,
     },
+    /// Date/time component
     DatePart(DatePart),
+    /// AM/PM indicator
     AmPm(AmPmStyle),
+    /// Elapsed time component for durations
     Elapsed(ElapsedPart),
+    /// `@` - Text placeholder for text values
     TextPlaceholder,
+    /// `*x` - Repeat character to fill available width
     Fill(char),
+    /// `_x` - Skip width of character (for alignment)
     Skip(char),
+    /// `[$...]` - Locale/currency specification
     Locale(LocaleCode),
 }
 
 impl FormatPart {
+    /// Returns true if this is a date/time part.
     pub fn is_date_part(&self) -> bool {
         matches!(
             self,
@@ -177,6 +227,7 @@ impl FormatPart {
         )
     }
 
+    /// Returns true if this is a numeric formatting part.
     pub fn is_numeric_part(&self) -> bool {
         matches!(
             self,
