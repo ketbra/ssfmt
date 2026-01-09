@@ -1,5 +1,6 @@
 //! AST types for parsed format codes.
 
+use crate::error::ParseError;
 use std::str::FromStr;
 
 /// Named colors supported in format codes.
@@ -326,5 +327,10 @@ impl NumberFormat {
     /// Returns true if any section has a condition.
     pub fn has_condition(&self) -> bool {
         self.sections.iter().any(|s| s.condition.is_some())
+    }
+
+    /// Parse a format code string into a NumberFormat.
+    pub fn parse(format_code: &str) -> Result<NumberFormat, ParseError> {
+        crate::parser::parse(format_code)
     }
 }
