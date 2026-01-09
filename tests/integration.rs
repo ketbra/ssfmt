@@ -19,7 +19,10 @@ fn test_general_number() {
 
     // Also test that "General" parses (even if it produces literal output)
     let general_fmt = NumberFormat::parse("General");
-    assert!(general_fmt.is_ok(), "General format should parse without error");
+    assert!(
+        general_fmt.is_ok(),
+        "General format should parse without error"
+    );
 }
 
 #[test]
@@ -31,7 +34,11 @@ fn test_accounting_format() {
 
     let result = fmt.format(1234.56, &opts);
     // Should contain the currency symbol and formatted number
-    assert!(result.contains("1,234.56"), "Expected '1,234.56' in result: {}", result);
+    assert!(
+        result.contains("1,234.56"),
+        "Expected '1,234.56' in result: {}",
+        result
+    );
 }
 
 #[test]
@@ -44,8 +51,16 @@ fn test_negative_in_parens() {
     let negative = fmt.format(-1234.0, &opts);
 
     assert_eq!(positive, "1,234");
-    assert!(negative.contains("1,234"), "Negative should contain 1,234: {}", negative);
-    assert!(negative.contains("(") && negative.contains(")"), "Negative should be in parens: {}", negative);
+    assert!(
+        negative.contains("1,234"),
+        "Negative should contain 1,234: {}",
+        negative
+    );
+    assert!(
+        negative.contains("(") && negative.contains(")"),
+        "Negative should be in parens: {}",
+        negative
+    );
 }
 
 #[test]
@@ -88,9 +103,21 @@ fn test_long_date() {
     let opts = FormatOptions::default();
 
     let result = fmt.format(46031.0, &opts);
-    assert!(result.contains("January"), "Expected 'January' in result: {}", result);
-    assert!(result.contains("2026"), "Expected '2026' in result: {}", result);
-    assert!(result.contains("9"), "Expected '9' (day) in result: {}", result);
+    assert!(
+        result.contains("January"),
+        "Expected 'January' in result: {}",
+        result
+    );
+    assert!(
+        result.contains("2026"),
+        "Expected '2026' in result: {}",
+        result
+    );
+    assert!(
+        result.contains("9"),
+        "Expected '9' (day) in result: {}",
+        result
+    );
 }
 
 // ============================================================================
@@ -184,7 +211,11 @@ fn test_thousands_scaling() {
 
     // 1,234,567 scaled by 1000 = 1234.567, rounded = 1,235
     let result = fmt.format(1234567.0, &opts);
-    assert!(result.contains("1") && result.len() < 10, "Expected scaled result: {}", result);
+    assert!(
+        result.contains("1") && result.len() < 10,
+        "Expected scaled result: {}",
+        result
+    );
 }
 
 #[test]
@@ -226,7 +257,10 @@ fn test_scientific_notation() {
     let result = fmt.format(1234.0, &opts);
     // The format parses but scientific notation output is not yet implemented
     // So we just verify we get some numeric output without error
-    assert!(!result.is_empty(), "Should produce some output for scientific notation");
+    assert!(
+        !result.is_empty(),
+        "Should produce some output for scientific notation"
+    );
 
     // Test that the format is recognized as having scientific parts
     let sections = fmt.sections();

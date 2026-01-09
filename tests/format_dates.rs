@@ -1,4 +1,4 @@
-use ssfmt::{NumberFormat, FormatOptions};
+use ssfmt::{FormatOptions, NumberFormat};
 
 #[test]
 fn test_format_date_ymd() {
