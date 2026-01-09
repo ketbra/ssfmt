@@ -17,5 +17,5 @@ mod parser;
 // Re-exports will be added once types are defined:
 pub use ast::{NumberFormat, Section};
 pub use error::{FormatError, ParseError};
-// pub use options::{DateSystem, FormatOptions};
+pub use options::{DateSystem, FormatOptions};
 pub use value::Value;

@@ -1,3 +1,5 @@
-//! Locale-specific formatting settings
+//! Locale support for formatting.
 
 mod builtin;
+
+pub use builtin::Locale;
