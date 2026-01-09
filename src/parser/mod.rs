@@ -1,4 +1,4 @@
-//! Parser for ECMA-376 number format codes
+//! Parser for ECMA-376 number format codes.
 
-mod lexer;
-mod tokens;
+pub mod lexer;
+pub mod tokens;
