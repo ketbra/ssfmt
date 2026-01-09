@@ -1,7 +1,50 @@
-//! ssfmt - Excel-compatible ECMA-376 number format codes
+//! # ssfmt
+//!
+//! Excel-compatible ECMA-376 number format codes for Rust.
 //!
 //! This crate provides parsing and formatting of spreadsheet number format codes,
 //! matching Excel's actual behavior including undocumented quirks.
+//!
+//! ## Quick Start
+//!
+//! ```rust
+//! use ssfmt::{format_default, NumberFormat, FormatOptions};
+//!
+//! // One-off formatting
+//! let result = format_default(1234.56, "#,##0.00").unwrap();
+//! assert_eq!(result, "1,234.56");
+//!
+//! // Compile once, format many
+//! let fmt = NumberFormat::parse("#,##0.00").unwrap();
+//! let opts = FormatOptions::default();
+//! assert_eq!(fmt.format(1234.56, &opts), "1,234.56");
+//! assert_eq!(fmt.format(9876.54, &opts), "9,876.54");
+//! ```
+//!
+//! ## Format Code Syntax
+//!
+//! Format codes can have up to 4 sections separated by semicolons:
+//! 1. Positive numbers
+//! 2. Negative numbers
+//! 3. Zero
+//! 4. Text
+//!
+//! ### Number Placeholders
+//! - `0` - Display digit or zero
+//! - `#` - Display digit or nothing
+//! - `?` - Display digit or space
+//!
+//! ### Date/Time Codes
+//! - `yyyy` - Four-digit year
+//! - `mm` - Two-digit month
+//! - `dd` - Two-digit day
+//! - `hh` - Two-digit hour
+//! - `mm` - Two-digit minute (after hour)
+//! - `ss` - Two-digit second
+//!
+//! ## Feature Flags
+//!
+//! - `chrono` (default) - Enable chrono type support
 
 pub mod ast;
 pub mod error;
