@@ -1,7 +1,7 @@
 //! Built-in locale data.
 
 /// Locale settings for formatting.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Locale {
     pub decimal_separator: char,
     pub thousands_separator: char,
