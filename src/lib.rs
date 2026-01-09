@@ -8,8 +8,9 @@ pub mod error;
 pub mod options;
 pub mod value;
 
+pub mod date_serial;
+
 mod cache;
-mod date_serial;
 mod formatter;
 mod locale;
 mod parser;
