@@ -55,8 +55,22 @@ impl NumberFormat {
             return date::format_date(value, section, opts);
         }
 
+        // Determine if we need to add a minus sign
+        // For single-section formats, we add the minus sign ourselves
+        // For multi-section formats, the section handles it
+        let sections = self.sections();
+        let num_sections = sections.len();
+        let need_minus_sign = num_sections == 1 && value < 0.0;
+
         // Format as a number
-        format_number(value, section, opts)
+        let mut result = format_number(value, section, opts)?;
+
+        // Add minus sign for single-section formats with negative values
+        if need_minus_sign {
+            result.insert(0, '-');
+        }
+
+        Ok(result)
     }
 
     /// Select the appropriate format section based on the value.
@@ -184,9 +198,9 @@ mod tests {
         )])]);
 
         let opts = FormatOptions::default();
-        // All values should use the same section
+        // Single-section formats: negative values get a minus sign prefix
         assert_eq!(fmt.format(42.0, &opts), "42");
-        assert_eq!(fmt.format(-42.0, &opts), "42");
+        assert_eq!(fmt.format(-42.0, &opts), "-42");
         assert_eq!(fmt.format(0.0, &opts), "0");
     }
 
