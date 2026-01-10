@@ -156,21 +156,103 @@ impl NumberFormat {
 
 /// Fallback formatting for when the format code cannot be applied.
 ///
-/// This provides a reasonable default representation of the value.
+/// Implements Excel's "General" number format behavior:
+/// - Very small numbers (0 < |x| < 1E-4) use scientific notation
+/// - Very large numbers (|x| >= 1E11) use scientific notation
+/// - Up to 11 significant digits total (including decimal point)
+/// - No trailing zeros after decimal point
 pub fn fallback_format(value: f64) -> String {
-    // Use general number formatting with up to 10 decimal places
-    let formatted = format!("{:.10}", value);
+    // Handle zero
+    if value == 0.0 {
+        return "0".to_string();
+    }
 
-    // Trim trailing zeros after decimal point
-    if formatted.contains('.') {
-        let trimmed = formatted.trim_end_matches('0');
-        if trimmed.ends_with('.') {
-            trimmed.trim_end_matches('.').to_string()
+    let abs_value = value.abs();
+
+    // Excel's General format uses scientific notation based on magnitude and precision:
+    // 1. Very small: 0 < |x| < 1E-9 -> scientific
+    // 2. Very large: |x| >= 1E11 -> scientific
+    // 3. In between but many sig figs: also scientific
+    // The rule seems to be: values < 1E-9 OR values with >11 significant figures
+
+    // Check if we should use scientific notation
+    let use_scientific = if abs_value >= 1e11 {
+        true
+    } else if abs_value != 0.0 && abs_value < 1e-9 {
+        // Very small numbers use scientific
+        true
+    } else if abs_value != 0.0 && abs_value < 1e-4 {
+        // For numbers in the 1E-9 to 1E-4 range, check significant figures
+        // Excel uses scientific if there are 3+ significant digits
+        let test_str = format!("{:.15}", abs_value);
+        // Remove leading "0." and count significant digits
+        let after_decimal = test_str.trim_start_matches("0.");
+        let sig_figs = after_decimal
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .filter(|c| *c != '0')
+            .count();
+        // Use scientific notation if 3 or more significant figures
+        sig_figs >= 3
+    } else {
+        false
+    };
+
+    if use_scientific {
+        // Format in scientific notation with up to 5 decimal places
+        // Excel shows "1.23457E+12" format
+        let formatted = format!("{:.5E}", value);
+
+        // Excel uses specific scientific notation format:
+        // Remove trailing zeros from mantissa, but keep at least one decimal place
+        if let Some(e_pos) = formatted.find('E') {
+            let (mantissa, exponent) = formatted.split_at(e_pos);
+            let trimmed_mantissa = mantissa.trim_end_matches('0');
+            let final_mantissa = if trimmed_mantissa.ends_with('.') {
+                &trimmed_mantissa[..trimmed_mantissa.len() - 1]
+            } else {
+                trimmed_mantissa
+            };
+
+            // Format exponent to match Excel: E+12, E-05, etc.
+            let exp_str = &exponent[1..]; // Skip 'E'
+            let exp_value: i32 = exp_str.parse().unwrap_or(0);
+            format!("{}E{:+03}", final_mantissa, exp_value)
         } else {
-            trimmed.to_string()
+            formatted
         }
     } else {
-        formatted
+        // Use decimal notation
+        // Excel's General format shows up to 11 characters total (including decimal point)
+        // but we need to be smart about significant figures
+
+        // Try to format with enough precision to show the value accurately
+        // but within Excel's 11-digit display limit
+        let formatted = if abs_value >= 1.0 {
+            // For numbers >= 1, format with appropriate decimal places
+            let integer_digits = abs_value.log10().floor() as usize + 1;
+            let decimal_places = if integer_digits >= 10 {
+                0
+            } else {
+                (10 - integer_digits).min(10)
+            };
+            format!("{:.prec$}", value, prec = decimal_places)
+        } else {
+            // For numbers < 1, format with up to 10 decimal places
+            format!("{:.10}", value)
+        };
+
+        // Trim trailing zeros after decimal point
+        if formatted.contains('.') {
+            let trimmed = formatted.trim_end_matches('0');
+            if trimmed.ends_with('.') {
+                trimmed.trim_end_matches('.').to_string()
+            } else {
+                trimmed.to_string()
+            }
+        } else {
+            formatted
+        }
     }
 }
 
