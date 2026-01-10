@@ -43,8 +43,14 @@ impl<'a> Lexer<'a> {
         let start = self.position;
         let ch = self.current_char().unwrap();
 
-        // Try to match AM/PM patterns first (before consuming individual characters)
+        // Try to match special keywords first (before consuming individual characters)
         if !self.in_bracket {
+            // Try to match "General" keyword
+            if let Some(general_token) = self.try_match_general() {
+                return Ok(general_token);
+            }
+
+            // Try to match AM/PM patterns
             if let Some(am_pm_token) = self.try_match_am_pm() {
                 return Ok(am_pm_token);
             }
@@ -235,6 +241,35 @@ impl<'a> Lexer<'a> {
                 found: '\\',
             }),
         }
+    }
+
+    /// Tries to match "General" keyword at the current position.
+    /// Returns Some(SpannedToken) if a match is found, None otherwise.
+    fn try_match_general(&mut self) -> Option<SpannedToken> {
+        let remaining = self.remaining();
+        let start = self.position;
+        let upper = remaining.to_uppercase();
+
+        if upper.starts_with("GENERAL") {
+            // Make sure it's not followed by more letters (e.g., "GeneralFoo")
+            // Check if the character after "General" is EOF, separator, or bracket
+            let after_pos = 7; // len("General")
+            let is_complete_word = if let Some(ch) = remaining.chars().nth(after_pos) {
+                !ch.is_ascii_alphabetic()
+            } else {
+                true // EOF
+            };
+
+            if is_complete_word {
+                self.position += 7; // len("General")
+                return Some(SpannedToken {
+                    token: Token::General,
+                    start,
+                    end: self.position,
+                });
+            }
+        }
+        None
     }
 
     /// Tries to match an AM/PM pattern at the current position.

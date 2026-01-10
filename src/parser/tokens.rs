@@ -47,6 +47,9 @@ pub enum Token {
     // AM/PM markers
     AmPm(String), // AM/PM, am/pm, A/P, a/p
 
+    // Special format keywords
+    General, // General format keyword
+
     // End of input
     Eof,
 }
