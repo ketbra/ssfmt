@@ -64,6 +64,20 @@ impl Condition {
             Condition::NotEqual(n) => (value - n).abs() >= f64::EPSILON,
         }
     }
+
+    /// Check if value strictly satisfies the condition (not at boundary).
+    /// For <=, >=, and = conditions, returns true only if not exactly equal.
+    /// For <, >, and != conditions, returns same as evaluate().
+    pub fn is_strict_match(&self, value: f64) -> bool {
+        match self {
+            Condition::GreaterThan(n) => value > *n,
+            Condition::LessThan(n) => value < *n,
+            Condition::Equal(n) => (value - n).abs() < f64::EPSILON,
+            Condition::GreaterOrEqual(n) => value > *n, // Strictly greater, not equal
+            Condition::LessOrEqual(n) => value < *n,    // Strictly less, not equal
+            Condition::NotEqual(n) => (value - n).abs() >= f64::EPSILON,
+        }
+    }
 }
 
 /// Digit placeholder type.

@@ -44,10 +44,12 @@ impl NumberFormat {
         // Select the appropriate section based on value
         let section = self.select_section(value);
 
-        // Excel behavior: when a conditional section matches, format using absolute value
-        // Check if this section was selected via a condition
+        // Excel behavior: when a conditional section strictly matches, format using absolute value
+        // Use absolute value only when the condition is strictly satisfied (not at boundary)
         let has_conditions = self.sections().iter().any(|s| s.condition.is_some());
-        let use_abs_value = has_conditions && section.condition.is_some();
+        let use_abs_value = has_conditions
+            && section.condition.is_some()
+            && section.condition.unwrap().is_strict_match(value);
         let format_value = if use_abs_value { value.abs() } else { value };
 
         // Handle "General" format (empty section with no parts)
