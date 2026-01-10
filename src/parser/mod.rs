@@ -247,9 +247,14 @@ impl<'a> Parser<'a> {
                     builder.add_part(FormatPart::DatePart(part));
                 }
                 Token::Month => {
-                    let count = self.count_consecutive(&Token::Month)?;
                     // Check if this should be minute (after hour) or month
-                    let part = if self.seen_hour {
+                    // BEFORE consuming tokens, check if seconds follow
+                    let has_seconds_following = self.has_seconds_ahead();
+                    let count = self.count_consecutive(&Token::Month)?;
+                    // It's a minute if:
+                    // 1. We've seen an hour token, OR
+                    // 2. There are seconds tokens following (mm:ss pattern)
+                    let part = if self.seen_hour || has_seconds_following {
                         // This is minute
                         if count >= 2 {
                             DatePart::Minute2
@@ -545,6 +550,30 @@ impl<'a> Parser<'a> {
     /// Check if current token matches the given token type (ignoring content).
     fn token_matches(&self, token_type: &Token) -> bool {
         std::mem::discriminant(&self.current.token) == std::mem::discriminant(token_type)
+    }
+
+    /// Check if there are seconds tokens appearing immediately after in a time context.
+    /// Used to disambiguate mm:ss (minutes:seconds) from mm-dd (month-day).
+    /// Returns true if the pattern ":s" or ":ss" appears next, indicating time format.
+    /// Note: Called while current token is a Month token, so need to skip past 'm'/'M' chars.
+    fn has_seconds_ahead(&self) -> bool {
+        // Look ahead in the lexer's remaining input, starting from current position
+        let mut remaining = &self.lexer.input[self.current.start..];
+
+        // Skip past 'm' or 'M' characters (the month/minute tokens we're currently at)
+        remaining = remaining.trim_start_matches(|c| c == 'm' || c == 'M');
+        remaining = remaining.trim_start();
+
+        // Check for time context pattern: ":s" or ":ss" indicates minutes:seconds
+        if remaining.starts_with(':') {
+            // Skip the colon and check if 's' or 'S' follows
+            let after_colon = &remaining[1..];
+            if let Some(first_ch) = after_colon.chars().next() {
+                return first_ch == 's' || first_ch == 'S';
+            }
+        }
+
+        false
     }
 
     /// Get the literal character from the current token.
