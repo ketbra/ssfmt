@@ -4,6 +4,42 @@ use crate::ast::{DigitPlaceholder, FormatPart, FractionDenom, Section};
 use crate::error::FormatError;
 use crate::options::FormatOptions;
 
+/// Format a fraction part (numerator or denominator) with digit placeholders.
+fn format_fraction_part(value: u32, placeholders: &[DigitPlaceholder]) -> String {
+    if placeholders.is_empty() {
+        return value.to_string();
+    }
+
+    let value_str = value.to_string();
+    let value_digits: Vec<char> = value_str.chars().collect();
+
+    // If we have more digits than placeholders, show all digits
+    if value_digits.len() > placeholders.len() {
+        return value_str;
+    }
+
+    let mut result = String::new();
+
+    // Process from right to left
+    for (pos_from_right, _) in (0..placeholders.len()).enumerate() {
+        let digit_index = value_digits.len() as isize - 1 - pos_from_right as isize;
+        let placeholder_index = placeholders.len() - 1 - pos_from_right;
+        let placeholder = placeholders[placeholder_index];
+
+        if digit_index >= 0 {
+            // We have a digit from the value
+            result.insert(0, value_digits[digit_index as usize]);
+        } else {
+            // Use placeholder's empty character
+            if let Some(c) = placeholder.empty_char() {
+                result.insert(0, c);
+            }
+        }
+    }
+
+    result
+}
+
 /// Format a number as a fraction according to the format section.
 pub fn format_fraction(
     value: f64,
@@ -90,38 +126,22 @@ pub fn format_fraction(
         result.push(' ');
     }
 
-    if num > 0 {
-        // Format numerator with padding
-        let num_str = format!("{}", num);
-        let num_width = numerator_digits.len();
-        for _ in 0..(num_width.saturating_sub(num_str.len())) {
-            result.push(' ');
-        }
-        result.push_str(&num_str);
+    // Always format the fraction (even if num is 0)
+    // Format numerator with proper placeholder handling
+    let num_str = format_fraction_part(num, numerator_digits);
+    result.push_str(&num_str);
 
-        result.push('/');
+    result.push('/');
 
-        // Format denominator with padding
-        let denom_str = format!("{}", denom);
-        let denom_width = match denominator {
-            FractionDenom::UpToDigits(d) => *d as usize,
-            FractionDenom::Fixed(_) => denom_str.len(),
-        };
-        result.push_str(&denom_str);
-        for _ in 0..(denom_width.saturating_sub(denom_str.len())) {
-            result.push(' ');
-        }
-    } else {
-        // No fractional part, pad to match format width
-        // Need to pad: numerator + "/" + denominator
-        let denom_width = match denominator {
-            FractionDenom::UpToDigits(d) => *d as usize,
-            FractionDenom::Fixed(d) => d.to_string().len(),
-        };
-        let total_frac_width = numerator_digits.len() + 1 + denom_width; // num + "/" + denom
-        for _ in 0..total_frac_width {
-            result.push(' ');
-        }
+    // Format denominator with padding
+    let denom_str = format!("{}", denom);
+    let denom_width = match denominator {
+        FractionDenom::UpToDigits(d) => *d as usize,
+        FractionDenom::Fixed(_) => denom_str.len(),
+    };
+    result.push_str(&denom_str);
+    for _ in 0..(denom_width.saturating_sub(denom_str.len())) {
+        result.push(' ');
     }
 
     Ok(result)
