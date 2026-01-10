@@ -15,6 +15,8 @@ pub struct FormatAnalysis {
     pub has_thousands_separator: bool,
     /// Number of percent signs (each multiplies by 100)
     pub percent_count: usize,
+    /// Thousands scaling factor (trailing commas divide by 1000 each)
+    pub thousands_scale: usize,
     /// Parts before the number (literals, etc.)
     pub prefix_parts: Vec<FormatPart>,
     /// Parts after the number (literals, percent, etc.)
@@ -66,6 +68,7 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
                 seen_digit = true;
             }
             FormatPart::ThousandsSeparator => {
+                // Regular thousands separator
                 has_thousands_separator = true;
             }
             FormatPart::Percent => {
@@ -110,11 +113,31 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
         integer_placeholders.push(DigitPlaceholder::Hash);
     }
 
+    // Count trailing commas by scanning backwards from the end
+    // Any ThousandsSeparator after the last Digit/DecimalPoint is a trailing comma
+    let mut trailing_commas = 0;
+    for part in section.parts.iter().rev() {
+        match part {
+            FormatPart::ThousandsSeparator => {
+                trailing_commas += 1;
+            }
+            FormatPart::Digit(_) | FormatPart::DecimalPoint => {
+                // Found a digit or decimal, stop counting trailing commas
+                break;
+            }
+            _ => {
+                // Other parts (Fill, Skip, Literal) - continue scanning
+            }
+        }
+    }
+    let thousands_scale = trailing_commas;
+
     FormatAnalysis {
         integer_placeholders,
         decimal_placeholders,
         has_thousands_separator,
         percent_count,
+        thousands_scale,
         prefix_parts,
         suffix_parts,
     }
@@ -191,6 +214,11 @@ pub fn format_number(
     let mut adjusted_value = value.abs();
     for _ in 0..analysis.percent_count {
         adjusted_value *= 100.0;
+    }
+
+    // Apply thousands scaling (trailing commas divide by 1000 each)
+    for _ in 0..analysis.thousands_scale {
+        adjusted_value /= 1000.0;
     }
 
     // Round to the required decimal places
