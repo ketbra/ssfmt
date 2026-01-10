@@ -678,15 +678,20 @@ impl SectionBuilder {
                     last_digit_pos = Some(i as usize);
                     int_digits.push(*d);
                 }
-                Some(FormatPart::Literal(s) | FormatPart::EscapedLiteral(s)) if s == " " && !int_digits.is_empty() => {
+                Some(FormatPart::Literal(s) | FormatPart::EscapedLiteral(s)) if s == " " => {
+                    // Found a space - this indicates a mixed fraction
                     found_space = true;
-                    break;
+                    if !int_digits.is_empty() {
+                        // Already collected some integer digits, we're done
+                        break;
+                    }
+                    // Haven't collected integer digits yet, continue scanning backwards
                 }
                 Some(FormatPart::ThousandsSeparator) if !int_digits.is_empty() => {
                     // Allow thousands separator in integer part
                 }
                 Some(FormatPart::Literal(_) | FormatPart::EscapedLiteral(_)) if int_digits.is_empty() => {
-                    // Haven't started collecting digits yet, keep this part
+                    // Haven't started collecting digits yet, and it's not a space, keep this part
                 }
                 _ => {
                     if !int_digits.is_empty() {
