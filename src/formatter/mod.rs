@@ -58,9 +58,11 @@ impl NumberFormat {
         // Determine if we need to add a minus sign
         // For single-section formats, we add the minus sign ourselves
         // For multi-section formats, the section handles it
+        // But NOT for literal-only formats (no numeric parts at all)
         let sections = self.sections();
         let num_sections = sections.len();
-        let need_minus_sign = num_sections == 1 && value < 0.0;
+        let has_numeric_parts = section.parts.iter().any(|p| p.is_numeric_part());
+        let need_minus_sign = num_sections == 1 && value < 0.0 && has_numeric_parts;
 
         // Format as a number
         let mut result = format_number(value, section, opts)?;
@@ -121,7 +123,14 @@ impl NumberFormat {
                 } else if value < 0.0 {
                     &sections[1]
                 } else {
-                    &sections[2]
+                    // Zero value - use section[2]
+                    // Unless it's text-only (@), then use positive section
+                    if sections[2].has_text_placeholder()
+                        && !sections[2].parts.iter().any(|p| p.is_numeric_part() || matches!(p, FormatPart::Literal(_))) {
+                        &sections[0]
+                    } else {
+                        &sections[2]
+                    }
                 }
             }
             _ => &sections[0],
