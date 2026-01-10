@@ -287,6 +287,16 @@ impl<'a> Lexer<'a> {
                 end: self.position,
             });
         }
+        // Malformed AM/P pattern (4 chars) - must check before A/P
+        if upper.starts_with("AM/P") {
+            let matched: String = remaining.chars().take(4).collect();
+            self.position += matched.len();
+            return Some(SpannedToken {
+                token: Token::AmPm(matched),
+                start,
+                end: self.position,
+            });
+        }
         if upper.starts_with("A/P") {
             let matched: String = remaining.chars().take(3).collect();
             self.position += matched.len();

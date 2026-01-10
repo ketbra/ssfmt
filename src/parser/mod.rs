@@ -838,11 +838,20 @@ fn parse_am_pm_style(s: &str) -> AmPmStyle {
     match s {
         "AM/PM" => AmPmStyle::Upper,
         "am/pm" => AmPmStyle::Lower,
+        "AM/P" => AmPmStyle::MalformedUpper,
+        "am/p" => AmPmStyle::MalformedLower,
         "A/P" => AmPmStyle::ShortUpper,
         "a/p" => AmPmStyle::ShortLower,
         // Default to upper for mixed case
         _ => {
-            if s.len() <= 3 {
+            if s.len() == 4 {
+                // 4-char patterns like "Am/P" - treat as malformed
+                if s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                    AmPmStyle::MalformedUpper
+                } else {
+                    AmPmStyle::MalformedLower
+                }
+            } else if s.len() <= 3 {
                 if s.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
                     AmPmStyle::ShortUpper
                 } else {

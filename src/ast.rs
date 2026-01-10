@@ -167,6 +167,10 @@ pub enum AmPmStyle {
     ShortUpper,
     /// `a/p` - Lowercase single letter a or p
     ShortLower,
+    /// `AM/P` - Malformed uppercase pattern (outputs A0/P or A1/P)
+    MalformedUpper,
+    /// `am/p` - Malformed lowercase pattern (outputs a0/p or a1/p)
+    MalformedLower,
 }
 
 /// Elapsed time format part (for durations).
