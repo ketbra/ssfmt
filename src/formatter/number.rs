@@ -85,8 +85,10 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
                     prefix_parts.push(part.clone());
                 }
             }
-            FormatPart::Literal(s) | FormatPart::Locale(crate::ast::LocaleCode { currency: Some(s), .. }) => {
+            FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) | FormatPart::Locale(crate::ast::LocaleCode { currency: Some(s), .. }) => {
                 let literal_str = if let FormatPart::Literal(s) = part {
+                    s.clone()
+                } else if let FormatPart::EscapedLiteral(s) = part {
                     s.clone()
                 } else if let FormatPart::Locale(loc) = part {
                     loc.currency.clone().unwrap_or_default()
@@ -239,7 +241,7 @@ pub fn format_number(
         let mut result = String::new();
         for part in &section.parts {
             match part {
-                FormatPart::Literal(s) => result.push_str(s),
+                FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => result.push_str(s),
                 FormatPart::Locale(locale_code) => {
                     if let Some(ref currency) = locale_code.currency {
                         result.push_str(currency);
@@ -455,7 +457,7 @@ fn build_result(
     // Add prefix parts
     for part in &analysis.prefix_parts {
         match part {
-            FormatPart::Literal(s) => result.push_str(s),
+            FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => result.push_str(s),
             FormatPart::Locale(locale_code) => {
                 if let Some(ref currency) = locale_code.currency {
                     result.push_str(currency);
@@ -472,7 +474,7 @@ fn build_result(
     // Add suffix parts
     for part in &analysis.suffix_parts {
         match part {
-            FormatPart::Literal(s) => result.push_str(s),
+            FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => result.push_str(s),
             FormatPart::Locale(locale_code) => {
                 if let Some(ref currency) = locale_code.currency {
                     result.push_str(currency);

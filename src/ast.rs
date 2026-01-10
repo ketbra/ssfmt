@@ -177,8 +177,10 @@ pub struct LocaleCode {
 /// A single part of a format section.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FormatPart {
-    /// Literal text to display as-is
+    /// Literal text to display as-is (from unescaped characters or quoted strings)
     Literal(String),
+    /// Escaped literal character (e.g., `\r`, `\#`) - does not get minus sign for negative values
+    EscapedLiteral(String),
     /// Digit placeholder (0, #, or ?)
     Digit(DigitPlaceholder),
     /// Decimal point separator

@@ -65,7 +65,7 @@ pub fn format_date(
                 let formatted = format_ampm(*style, hour, &opts.locale);
                 result.push_str(&formatted);
             }
-            FormatPart::Literal(s) => {
+            FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => {
                 result.push_str(s);
             }
             FormatPart::Skip(c) => {
