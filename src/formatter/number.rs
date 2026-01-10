@@ -20,6 +20,9 @@ pub struct FormatAnalysis {
     /// Literals that appear inline with integer digits (position -> literal)
     /// Position is counted from the right (0 = ones place, 1 = tens, etc.)
     pub inline_literals: Vec<(usize, String)>,
+    /// Literals that appear inline with decimal digits (position -> literal)
+    /// Position is counted from the left (0 = first decimal place, 1 = second, etc.)
+    pub decimal_inline_literals: Vec<(usize, String)>,
     /// Parts before the number (literals, etc.)
     pub prefix_parts: Vec<FormatPart>,
     /// Parts after the number (literals, percent, etc.)
@@ -49,6 +52,7 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
     let mut has_thousands_separator = false;
     let mut percent_count = 0;
     let mut inline_literals = Vec::new();
+    let mut decimal_inline_literals = Vec::new();
     let mut prefix_parts = Vec::new();
     let mut suffix_parts = Vec::new();
 
@@ -102,6 +106,10 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
                 } else if after_digits {
                     // After all digits (after decimal or after digit sequence ended) - suffix
                     suffix_parts.push(part.clone());
+                } else if after_decimal {
+                    // Among decimal digits - inline literal in decimal part
+                    // Store position from left (index in decimal_placeholders)
+                    decimal_inline_literals.push((decimal_placeholders.len(), literal_str));
                 } else {
                     // Among integer digits - inline literal
                     // Store the current placeholder count - we'll convert to position later
@@ -184,6 +192,7 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
         percent_count,
         thousands_scale,
         inline_literals: inline_literals_converted,
+        decimal_inline_literals,
         prefix_parts,
         suffix_parts,
     }
@@ -337,7 +346,12 @@ fn format_with_placeholders(value: f64, analysis: &FormatAnalysis, opts: &Format
 
     // Format decimal part
     if decimal_places > 0 {
-        let decimal_str = format_decimal(decimal_part, &analysis.decimal_placeholders, opts);
+        let decimal_str = format_decimal(
+            decimal_part,
+            &analysis.decimal_placeholders,
+            &analysis.decimal_inline_literals,
+            opts,
+        );
         format!(
             "{}{}{}",
             integer_str, opts.locale.decimal_separator, decimal_str
@@ -469,7 +483,12 @@ fn format_integer(
 }
 
 /// Format the decimal part with placeholders.
-fn format_decimal(value: f64, placeholders: &[DigitPlaceholder], _opts: &FormatOptions) -> String {
+fn format_decimal(
+    value: f64,
+    placeholders: &[DigitPlaceholder],
+    decimal_inline_literals: &[(usize, String)],
+    _opts: &FormatOptions,
+) -> String {
     if placeholders.is_empty() {
         return String::new();
     }
@@ -503,6 +522,13 @@ fn format_decimal(value: f64, placeholders: &[DigitPlaceholder], _opts: &FormatO
 
     // Build result, respecting placeholder rules
     for (i, placeholder) in placeholders.iter().enumerate() {
+        // Insert any decimal inline literals that appear at this position
+        for (literal_pos, literal_str) in decimal_inline_literals {
+            if *literal_pos == i {
+                result.push_str(literal_str);
+            }
+        }
+
         // For placeholders beyond effective precision, use '0'
         let ch = if i < effective_places {
             decimal_chars.get(i).copied().unwrap_or('0')
