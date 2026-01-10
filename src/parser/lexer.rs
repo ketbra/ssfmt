@@ -251,23 +251,14 @@ impl<'a> Lexer<'a> {
         let upper = remaining.to_uppercase();
 
         if upper.starts_with("GENERAL") {
-            // Make sure it's not followed by more letters (e.g., "GeneralFoo")
-            // Check if the character after "General" is EOF, separator, or bracket
-            let after_pos = 7; // len("General")
-            let is_complete_word = if let Some(ch) = remaining.chars().nth(after_pos) {
-                !ch.is_ascii_alphabetic()
-            } else {
-                true // EOF
-            };
-
-            if is_complete_word {
-                self.position += 7; // len("General")
-                return Some(SpannedToken {
-                    token: Token::General,
-                    start,
-                    end: self.position,
-                });
-            }
+            // Match "General" keyword regardless of what follows
+            // The parser will handle "General" followed by literals correctly
+            self.position += 7; // len("General")
+            return Some(SpannedToken {
+                token: Token::General,
+                start,
+                end: self.position,
+            });
         }
         None
     }
