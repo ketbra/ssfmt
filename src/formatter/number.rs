@@ -126,13 +126,38 @@ pub fn format_number(
     section: &Section,
     opts: &FormatOptions,
 ) -> Result<String, FormatError> {
+    // Check if this is scientific notation
+    let scientific_part = section.parts.iter().find_map(|p| {
+        if let FormatPart::Scientific { upper, show_plus } = p {
+            Some((*upper, *show_plus))
+        } else {
+            None
+        }
+    });
+
+    if let Some((upper, show_plus)) = scientific_part {
+        return format_scientific(value, section, upper, show_plus, opts);
+    }
+
     // Check if section has any numeric placeholders
     let has_numeric_parts = section
         .parts
         .iter()
         .any(|p| matches!(p, FormatPart::Digit(_) | FormatPart::DecimalPoint));
 
-    // If no numeric parts, just return the literals
+    // Check if section has a text placeholder
+    let has_text_placeholder = section
+        .parts
+        .iter()
+        .any(|p| matches!(p, FormatPart::TextPlaceholder));
+
+    // If we have a text placeholder and we're formatting a number,
+    // use General format (fallback formatting)
+    if has_text_placeholder && !has_numeric_parts {
+        return Ok(crate::formatter::fallback_format(value));
+    }
+
+    // If no numeric parts and no text placeholder, just return the literals
     if !has_numeric_parts {
         let mut result = String::new();
         for part in &section.parts {
@@ -211,6 +236,12 @@ fn format_integer(
     let value_digits: Vec<char> = value_str.chars().collect();
 
     let min_digits = placeholders.iter().filter(|p| p.is_required()).count();
+
+    // Special case: if value is 0 and all placeholders are optional, return empty
+    if value == 0 && min_digits == 0 {
+        return String::new();
+    }
+
     let output_len = value_digits.len().max(min_digits);
 
     let mut result = String::new();
@@ -336,6 +367,110 @@ fn build_result(
     }
 
     result
+}
+
+/// Format a number in scientific notation according to a format section.
+fn format_scientific(
+    value: f64,
+    section: &Section,
+    upper: bool,
+    show_plus: bool,
+    _opts: &FormatOptions,
+) -> Result<String, FormatError> {
+    // Count digits before and after decimal in mantissa, and exponent digits
+    let mut mantissa_integer_places = 0;
+    let mut mantissa_decimal_places = 0;
+    let mut exponent_digits = 0;
+    let mut seen_decimal = false;
+    let mut after_exponent = false;
+
+    for part in &section.parts {
+        match part {
+            FormatPart::Digit(_) if !seen_decimal && !after_exponent => {
+                mantissa_integer_places += 1;
+            }
+            FormatPart::DecimalPoint if !after_exponent => {
+                seen_decimal = true;
+            }
+            FormatPart::Digit(_) if seen_decimal && !after_exponent => {
+                mantissa_decimal_places += 1;
+            }
+            FormatPart::Scientific { .. } => {
+                after_exponent = true;
+            }
+            FormatPart::Digit(_) if after_exponent => {
+                exponent_digits += 1;
+            }
+            _ => {}
+        }
+    }
+
+    // Convert value to scientific notation
+    let abs_value = value.abs();
+
+    // Handle zero specially
+    if abs_value == 0.0 {
+        let zeros = "0".repeat(mantissa_decimal_places);
+        let decimal_part = if mantissa_decimal_places > 0 {
+            format!(".{}", zeros)
+        } else {
+            String::new()
+        };
+        let exp_char = if upper { 'E' } else { 'e' };
+        let sign = if show_plus { "+" } else { "" };
+        return Ok(format!("0{}{}{sign}00", decimal_part, exp_char));
+    }
+
+    // Calculate exponent based on integer placeholder count
+    // Standard format (0) or minimal format (no placeholder): mantissa 1-10, exponent = log10(value)
+    // Format with multiple placeholders (##0): adjust exponent to use more mantissa digits
+    let base_exponent = abs_value.log10().floor() as i32;
+
+    let exponent = if mantissa_integer_places > 1 {
+        // For ##0 (3 places), we want mantissa to be in range [1, 1000)
+        // Adjust exponent to be a multiple of (places-1) to group digits
+        // For ##0: exponent should be multiple of 3, giving mantissa like 123.5E+6, not 1.235E+8
+        let group_size = (mantissa_integer_places as i32).max(1);
+        // Round exponent down to nearest multiple of group_size
+        (base_exponent / group_size) * group_size
+    } else {
+        base_exponent
+    };
+
+    let mantissa = abs_value / 10_f64.powi(exponent);
+
+    // Format mantissa with appropriate decimal places
+    let mantissa_str = if mantissa_decimal_places > 0 {
+        format!("{:.prec$}", mantissa, prec = mantissa_decimal_places)
+    } else {
+        format!("{:.0}", mantissa)
+    };
+
+    // Format exponent
+    let exp_char = if upper { 'E' } else { 'e' };
+    let exp_sign = if exponent >= 0 {
+        if show_plus { "+" } else { "" }
+    } else {
+        "-"
+    };
+    let exp_abs = exponent.abs();
+
+    // Format exponent with appropriate zero padding
+    let exp_str = if exponent_digits >= 2 {
+        // 0.00E+00 format uses 2-digit exponents
+        format!("{:02}", exp_abs)
+    } else {
+        // ##0.0E+0 format uses minimal digits
+        format!("{}", exp_abs)
+    };
+    let formatted = format!("{}{}{}{}", mantissa_str, exp_char, exp_sign, exp_str);
+
+    // Apply sign for negative values
+    if value < 0.0 {
+        Ok(format!("-{}", formatted))
+    } else {
+        Ok(formatted)
+    }
 }
 
 #[cfg(test)]
