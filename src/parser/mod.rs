@@ -312,7 +312,7 @@ impl<'a> Parser<'a> {
                     self.advance()?;
                 }
                 Token::EscapedChar(ch) => {
-                    builder.add_part(FormatPart::Literal(ch.to_string()));
+                    builder.add_part(FormatPart::EscapedLiteral(ch.to_string()));
                     self.advance()?;
                 }
                 Token::QuotedString(s) => {
@@ -538,7 +538,7 @@ impl SectionBuilder {
                     let mut count = 0;
                     for i in denom_start..self.parts.len() {
                         match &self.parts[i] {
-                            FormatPart::Literal(s) if s.len() == 1 && s.chars().next().unwrap().is_ascii_digit() => {
+                            FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) if s.len() == 1 && s.chars().next().unwrap().is_ascii_digit() => {
                                 // Single digit literal like "1", "6"
                                 num_str.push_str(s);
                                 count += 1;
@@ -617,7 +617,7 @@ impl SectionBuilder {
     /// Find position of "/" literal starting from index
     fn find_slash_position(&self, start: usize) -> Option<usize> {
         for i in start..self.parts.len() {
-            if matches!(&self.parts[i], FormatPart::Literal(s) if s == "/") {
+            if matches!(&self.parts[i], FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) if s == "/") {
                 return Some(i);
             }
         }
@@ -668,14 +668,14 @@ impl SectionBuilder {
                     last_digit_pos = Some(i as usize);
                     int_digits.push(*d);
                 }
-                Some(FormatPart::Literal(s)) if s == " " && !int_digits.is_empty() => {
+                Some(FormatPart::Literal(s) | FormatPart::EscapedLiteral(s)) if s == " " && !int_digits.is_empty() => {
                     found_space = true;
                     break;
                 }
                 Some(FormatPart::ThousandsSeparator) if !int_digits.is_empty() => {
                     // Allow thousands separator in integer part
                 }
-                Some(FormatPart::Literal(_)) if int_digits.is_empty() => {
+                Some(FormatPart::Literal(_) | FormatPart::EscapedLiteral(_)) if int_digits.is_empty() => {
                     // Haven't started collecting digits yet, keep this part
                 }
                 _ => {

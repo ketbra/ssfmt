@@ -58,11 +58,13 @@ impl NumberFormat {
         // Determine if we need to add a minus sign
         // For single-section formats, we add the minus sign ourselves
         // For multi-section formats, the section handles it
-        // But NOT for literal-only formats (no numeric parts at all)
+        // For literal-only formats (no numeric parts), add minus ONLY if it's a single unescaped single-char literal
         let sections = self.sections();
         let num_sections = sections.len();
         let has_numeric_parts = section.parts.iter().any(|p| p.is_numeric_part());
-        let need_minus_sign = num_sections == 1 && value < 0.0 && has_numeric_parts;
+        let is_single_char_literal = section.parts.len() == 1
+            && matches!(&section.parts[0], FormatPart::Literal(s) if s.len() == 1);
+        let need_minus_sign = num_sections == 1 && value < 0.0 && (has_numeric_parts || is_single_char_literal);
 
         // Format as a number
         let mut result = format_number(value, section, opts)?;
@@ -126,7 +128,7 @@ impl NumberFormat {
                     // Zero value - use section[2]
                     // Unless it's text-only (@), then use positive section
                     if sections[2].has_text_placeholder()
-                        && !sections[2].parts.iter().any(|p| p.is_numeric_part() || matches!(p, FormatPart::Literal(_))) {
+                        && !sections[2].parts.iter().any(|p| p.is_numeric_part() || matches!(p, FormatPart::Literal(_) | FormatPart::EscapedLiteral(_))) {
                         &sections[0]
                     } else {
                         &sections[2]
@@ -152,7 +154,7 @@ impl NumberFormat {
             for part in &text_section.parts {
                 match part {
                     FormatPart::TextPlaceholder => result.push_str(text),
-                    FormatPart::Literal(s) => result.push_str(s),
+                    FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => result.push_str(s),
                     _ => {}
                 }
             }
