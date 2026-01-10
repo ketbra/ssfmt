@@ -329,8 +329,19 @@ fn format_integer(
     let min_digits = placeholders.iter().filter(|p| p.is_required()).count();
 
     // Special case: if value is 0 and all placeholders are optional, return empty
+    // BUT still include any inline literals
     if value == 0 && min_digits == 0 {
-        return String::new();
+        let mut result = String::new();
+        // Add any inline literals that would be in the optional placeholder region
+        // Sort by position (descending) to add them left-to-right
+        let mut sorted_literals: Vec<_> = inline_literals.iter().collect();
+        sorted_literals.sort_by(|a, b| b.0.cmp(&a.0)); // Descending order
+
+        for (_literal_pos, literal_str) in sorted_literals {
+            // Add literals in order (left to right)
+            result.push_str(literal_str);
+        }
+        return result;
     }
 
     let output_len = value_digits.len().max(min_digits);
