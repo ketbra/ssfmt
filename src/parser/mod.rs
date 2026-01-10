@@ -251,6 +251,25 @@ impl<'a> Parser<'a> {
                         DatePart::Hour
                     };
                     builder.add_part(FormatPart::DatePart(part));
+
+                    // Check for fractional hours (.0, .00, .000, etc.)
+                    if matches!(self.current.token, Token::DecimalPoint) {
+                        self.advance()?;
+                        // Count consecutive zeros after decimal point
+                        let mut frac_places = 0;
+                        while matches!(self.current.token, Token::Zero) {
+                            frac_places += 1;
+                            self.advance()?;
+                        }
+                        if frac_places > 0 {
+                            // Add decimal point as literal
+                            builder.add_part(FormatPart::Literal(".".to_string()));
+                            // Treat as subsecond for now (fractional time)
+                            builder.add_part(FormatPart::DatePart(DatePart::SubSecond(
+                                frac_places as u8,
+                            )));
+                        }
+                    }
                 }
                 Token::Second => {
                     let count = self.count_consecutive(&Token::Second)?;
@@ -260,6 +279,24 @@ impl<'a> Parser<'a> {
                         DatePart::Second
                     };
                     builder.add_part(FormatPart::DatePart(part));
+
+                    // Check for subsecond formatting (.0, .00, .000, etc.)
+                    if matches!(self.current.token, Token::DecimalPoint) {
+                        self.advance()?;
+                        // Count consecutive zeros after decimal point
+                        let mut subsec_places = 0;
+                        while matches!(self.current.token, Token::Zero) {
+                            subsec_places += 1;
+                            self.advance()?;
+                        }
+                        if subsec_places > 0 {
+                            // Add decimal point as literal
+                            builder.add_part(FormatPart::Literal(".".to_string()));
+                            builder.add_part(FormatPart::DatePart(DatePart::SubSecond(
+                                subsec_places as u8,
+                            )));
+                        }
+                    }
                 }
 
                 // AM/PM
