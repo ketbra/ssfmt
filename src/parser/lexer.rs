@@ -13,7 +13,7 @@ use crate::parser::tokens::{SpannedToken, Token};
 /// A lexer for format code strings.
 pub struct Lexer<'a> {
     /// The input string being tokenized.
-    input: &'a str,
+    pub(crate) input: &'a str,
     /// The current position in the input.
     position: usize,
     /// Whether we are currently inside brackets.
