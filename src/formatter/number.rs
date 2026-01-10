@@ -248,6 +248,11 @@ pub fn format_number(
                     }
                 }
                 FormatPart::Percent => result.push('%'),
+                FormatPart::Skip(_) => result.push(' '),
+                FormatPart::Fill(_) => {
+                    // Fill character - for now just skip it in literal-only formats
+                    // TODO: implement proper fill behavior with available width
+                }
                 _ => {}
             }
         }
