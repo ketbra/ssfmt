@@ -47,6 +47,7 @@
 //! - `chrono` (default) - Enable chrono type support
 
 pub mod ast;
+pub mod builtin_formats;
 pub mod error;
 pub mod options;
 pub mod value;
@@ -60,6 +61,7 @@ pub mod parser;
 
 // Re-exports will be added once types are defined:
 pub use ast::{NumberFormat, Section};
+pub use builtin_formats::{format_code_from_id, is_builtin_format_id};
 pub use error::{FormatError, ParseError};
 pub use locale::Locale;
 pub use options::{DateSystem, FormatOptions};
@@ -81,4 +83,53 @@ pub fn format(value: f64, format_code: &str, opts: &FormatOptions) -> Result<Str
 pub fn format_default(value: f64, format_code: &str) -> Result<String, ParseError> {
     let opts = FormatOptions::default();
     format(value, format_code, &opts)
+}
+
+/// Format a value using a built-in format ID.
+///
+/// Excel stores built-in format IDs (0-49) in .xlsx files. This function
+/// looks up the format code for the given ID and formats the value.
+///
+/// # Arguments
+/// * `value` - The numeric value to format
+/// * `format_id` - The built-in format ID (e.g., 0 for "General", 14 for "m/d/yy")
+/// * `opts` - Format options (date system, locale)
+///
+/// # Returns
+/// * `Ok(String)` - The formatted value
+/// * `Err(ParseError::InvalidFormatId)` - If the format ID is not a recognized built-in format
+///
+/// # Examples
+/// ```
+/// use ssfmt::{format_with_id, FormatOptions};
+///
+/// let opts = FormatOptions::default();
+/// assert_eq!(format_with_id(1234.56, 0, &opts).unwrap(), "1234.56"); // General
+/// assert_eq!(format_with_id(1234.56, 2, &opts).unwrap(), "1234.56"); // 0.00
+/// ```
+pub fn format_with_id(
+    value: f64,
+    format_id: u32,
+    opts: &FormatOptions,
+) -> Result<String, ParseError> {
+    let format_code = format_code_from_id(format_id)
+        .ok_or(ParseError::InvalidFormatId(format_id))?;
+    format(value, format_code, opts)
+}
+
+/// Format a value using a built-in format ID with default options.
+///
+/// Convenience wrapper around `format_with_id` using default options
+/// (1900 date system, en-US locale).
+///
+/// # Examples
+/// ```
+/// use ssfmt::format_with_id_default;
+///
+/// assert_eq!(format_with_id_default(1234.56, 0).unwrap(), "1234.56"); // General
+/// assert_eq!(format_with_id_default(0.5, 10).unwrap(), "50.00%"); // 0.00%
+/// ```
+pub fn format_with_id_default(value: f64, format_id: u32) -> Result<String, ParseError> {
+    let opts = FormatOptions::default();
+    format_with_id(value, format_id, &opts)
 }
