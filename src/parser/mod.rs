@@ -535,6 +535,9 @@ impl SectionBuilder {
         // Post-process to detect fraction patterns
         self.detect_fractions();
 
+        // Post-process to detect subsecond patterns in date formats
+        self.detect_subseconds();
+
         Section {
             condition: self.condition,
             color: self.color,
@@ -633,6 +636,48 @@ impl SectionBuilder {
                 new_parts.push(self.parts[i].clone());
                 i += 1;
             }
+        }
+
+        self.parts = new_parts;
+    }
+
+    /// Detect and convert subsecond patterns in date formats.
+    /// Looks for DecimalPoint followed by Digit(Zero) placeholders after date/time parts
+    /// and converts them to Literal(".") + DatePart::SubSecond(n).
+    fn detect_subseconds(&mut self) {
+        let mut new_parts = Vec::new();
+        let mut i = 0;
+
+        while i < self.parts.len() {
+            // Check if current part is a DecimalPoint
+            if matches!(&self.parts[i], FormatPart::DecimalPoint) {
+                // Check if there are consecutive Zero digit placeholders after it
+                let mut zero_count = 0;
+                let mut j = i + 1;
+                while j < self.parts.len() && matches!(&self.parts[j], FormatPart::Digit(DigitPlaceholder::Zero)) {
+                    zero_count += 1;
+                    j += 1;
+                }
+
+                // If we found zeros after the decimal point, check if there are date/time parts before
+                if zero_count > 0 {
+                    let has_date_parts = new_parts.iter().any(|p| matches!(p,
+                        FormatPart::DatePart(_) | FormatPart::AmPm(_) | FormatPart::Elapsed(_)
+                    ));
+
+                    if has_date_parts {
+                        // Convert to subsecond formatting
+                        new_parts.push(FormatPart::Literal(".".to_string()));
+                        new_parts.push(FormatPart::DatePart(DatePart::SubSecond(zero_count as u8)));
+                        i = j; // Skip past the decimal point and zeros
+                        continue;
+                    }
+                }
+            }
+
+            // Not a subsecond pattern, keep the part as-is
+            new_parts.push(self.parts[i].clone());
+            i += 1;
         }
 
         self.parts = new_parts;
