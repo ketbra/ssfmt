@@ -1,6 +1,6 @@
 //! Date and time formatting
 
-use crate::ast::{AmPmStyle, DatePart, FormatPart, Section};
+use crate::ast::{AmPmStyle, DatePart, ElapsedPart, FormatPart, Section};
 use crate::date_serial::{serial_to_date, serial_to_time, serial_to_weekday};
 use crate::error::FormatError;
 use crate::locale::Locale;
@@ -26,6 +26,15 @@ pub fn format_date(
         .count();
     let has_multiple_subseconds = subsecond_count > 1;
 
+    // Round the serial value if it's very close to an integer
+    // This handles floating point precision errors like 2.9999999999999996 -> 3.0
+    // which should display as 72:00:00 not 72:01:00
+    let adjusted_value = if (value - value.round()).abs() < 1e-10 {
+        value.round()
+    } else {
+        value
+    };
+
     // Get date components
     // For time-only values (serial < 1), use a default date since we only need time
     let (year, month, day) = if value >= 1.0 {
@@ -38,7 +47,7 @@ pub fn format_date(
     };
 
     // Get time components
-    let (hour, minute, second) = serial_to_time(value);
+    let (hour, minute, second) = serial_to_time(adjusted_value);
 
     // Get weekday (1=Sunday...7=Saturday)
     // For time-only values, use Sunday as default
@@ -72,6 +81,10 @@ pub fn format_date(
             }
             FormatPart::AmPm(style) => {
                 let formatted = format_ampm(*style, hour, &opts.locale);
+                result.push_str(&formatted);
+            }
+            FormatPart::Elapsed(elapsed_part) => {
+                let formatted = format_elapsed(*elapsed_part, adjusted_value);
                 result.push_str(&formatted);
             }
             FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => {
@@ -247,6 +260,27 @@ fn format_ampm(style: AmPmStyle, hour: u32, locale: &Locale) -> String {
             } else {
                 "A".to_string()
             }
+        }
+    }
+}
+
+/// Format elapsed time (total hours, minutes, or seconds).
+fn format_elapsed(part: ElapsedPart, serial_value: f64) -> String {
+    match part {
+        ElapsedPart::Hours => {
+            // Total hours = serial_value * 24
+            let total_hours = (serial_value * 24.0).round() as i64;
+            format!("{}", total_hours)
+        }
+        ElapsedPart::Minutes => {
+            // Total minutes = serial_value * 24 * 60
+            let total_minutes = (serial_value * 24.0 * 60.0).round() as i64;
+            format!("{}", total_minutes)
+        }
+        ElapsedPart::Seconds => {
+            // Total seconds = serial_value * 24 * 60 * 60
+            let total_seconds = (serial_value * 24.0 * 60.0 * 60.0).round() as i64;
+            format!("{}", total_seconds)
         }
     }
 }
