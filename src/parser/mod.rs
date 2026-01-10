@@ -532,14 +532,34 @@ impl SectionBuilder {
                 let denom_digits = self.collect_digit_placeholders(denom_start);
 
                 // Also check for fixed denominator (numeric literal)
-                let fixed_denom = if denom_digits.is_empty() && denom_start < self.parts.len() {
-                    if let FormatPart::Literal(s) = &self.parts[denom_start] {
-                        s.parse::<u32>().ok()
+                // Need to collect consecutive digit literals/digits to handle multi-digit numbers like "10", "16", etc.
+                let (fixed_denom, fixed_denom_len) = if denom_digits.is_empty() {
+                    let mut num_str = String::new();
+                    let mut count = 0;
+                    for i in denom_start..self.parts.len() {
+                        match &self.parts[i] {
+                            FormatPart::Literal(s) if s.len() == 1 && s.chars().next().unwrap().is_ascii_digit() => {
+                                // Single digit literal like "1", "6"
+                                num_str.push_str(s);
+                                count += 1;
+                            }
+                            FormatPart::Digit(DigitPlaceholder::Zero) => {
+                                // "0" token - can be part of a fixed denominator number
+                                num_str.push('0');
+                                count += 1;
+                            }
+                            _ => {
+                                break;
+                            }
+                        }
+                    }
+                    if !num_str.is_empty() {
+                        (num_str.parse::<u32>().ok(), count)
                     } else {
-                        None
+                        (None, 0)
                     }
                 } else {
-                    None
+                    (None, 0)
                 };
 
                 if !denom_digits.is_empty() || fixed_denom.is_some() {
@@ -573,7 +593,7 @@ impl SectionBuilder {
 
                             // Skip past all the parts we consumed
                             let skip_count = if fixed_denom.is_some() {
-                                1 // Skip the fixed denominator literal
+                                fixed_denom_len // Skip all the fixed denominator literals
                             } else {
                                 denom_digits.len() // Skip all denominator digit placeholders
                             };
