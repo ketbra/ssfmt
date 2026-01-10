@@ -19,11 +19,29 @@ pub fn parse(format_code: &str) -> Result<NumberFormat, ParseError> {
 
     // Handle "General" format specially - it's Excel's default format
     // that displays numbers without unnecessary formatting
-    if format_code.eq_ignore_ascii_case("General") {
+    // Also handle "[Color]General" and similar patterns
+    let general_check = if format_code.eq_ignore_ascii_case("General") {
+        Some(None) // General with no color
+    } else if let Some(bracket_end) = format_code.find(']') {
+        // Check if format is "[...]General"
+        let after_bracket = &format_code[bracket_end + 1..];
+        if after_bracket.trim().eq_ignore_ascii_case("General") {
+            // Try to parse the bracket content as a color
+            let bracket_content = &format_code[1..bracket_end];
+            let color = try_parse_color(bracket_content);
+            Some(color)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if let Some(color) = general_check {
         // Create an empty section that will trigger fallback formatting
         let general_section = Section {
             condition: None,
-            color: None,
+            color,
             parts: Vec::new(),
         };
         return Ok(NumberFormat::from_sections(vec![general_section]));
