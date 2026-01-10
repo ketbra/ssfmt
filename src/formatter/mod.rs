@@ -56,7 +56,14 @@ impl NumberFormat {
         // This uses fallback formatting which matches Excel's General behavior
         // Note: sections can have conditions or colors and still be General format
         if section.parts.is_empty() {
-            return Ok(fallback_format(format_value));
+            // Special case: if this is a strict conditional match, Excel truncates decimals
+            // This handles formats like "[<-25]General" which show "50" instead of "50.1"
+            let truncated_value = if use_abs_value && format_value.fract() != 0.0 {
+                format_value.trunc()
+            } else {
+                format_value
+            };
+            return Ok(fallback_format(truncated_value));
         }
 
         // Check if this is a date format
