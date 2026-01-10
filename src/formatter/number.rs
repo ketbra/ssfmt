@@ -236,27 +236,59 @@ pub fn format_number(
         return Ok(crate::formatter::fallback_format(value));
     }
 
-    // If no numeric parts and no text placeholder, just return the literals
+    // If no numeric parts and no text placeholder, check if GeneralNumber is present
     if !has_numeric_parts {
-        let mut result = String::new();
-        for part in &section.parts {
-            match part {
-                FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => result.push_str(s),
-                FormatPart::Locale(locale_code) => {
-                    if let Some(ref currency) = locale_code.currency {
-                        result.push_str(currency);
+        let has_general_number = section
+            .parts
+            .iter()
+            .any(|p| matches!(p, FormatPart::GeneralNumber));
+
+        if has_general_number {
+            // Section has GeneralNumber part - use General format + append literals
+            // This handles cases like "General " where we want to format the number and add a suffix
+            let mut result = crate::formatter::fallback_format(value);
+            for part in &section.parts {
+                match part {
+                    FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => result.push_str(s),
+                    FormatPart::Locale(locale_code) => {
+                        if let Some(ref currency) = locale_code.currency {
+                            result.push_str(currency);
+                        }
                     }
+                    FormatPart::Percent => result.push('%'),
+                    FormatPart::Skip(_) => result.push(' '),
+                    FormatPart::Fill(_) => {
+                        // Fill character - for now just skip it
+                    }
+                    FormatPart::GeneralNumber => {
+                        // Already handled - skip
+                    }
+                    _ => {}
                 }
-                FormatPart::Percent => result.push('%'),
-                FormatPart::Skip(_) => result.push(' '),
-                FormatPart::Fill(_) => {
-                    // Fill character - for now just skip it in literal-only formats
-                    // TODO: implement proper fill behavior with available width
-                }
-                _ => {}
             }
+            return Ok(result);
+        } else {
+            // No GeneralNumber - just return the literals without formatting the number
+            let mut result = String::new();
+            for part in &section.parts {
+                match part {
+                    FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => result.push_str(s),
+                    FormatPart::Locale(locale_code) => {
+                        if let Some(ref currency) = locale_code.currency {
+                            result.push_str(currency);
+                        }
+                    }
+                    FormatPart::Percent => result.push('%'),
+                    FormatPart::Skip(_) => result.push(' '),
+                    FormatPart::Fill(_) => {
+                        // Fill character - for now just skip it in literal-only formats
+                        // TODO: implement proper fill behavior with available width
+                    }
+                    _ => {}
+                }
+            }
+            return Ok(result);
         }
-        return Ok(result);
     }
 
     let analysis = analyze_format(section);

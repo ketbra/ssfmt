@@ -219,6 +219,8 @@ pub enum FormatPart {
     Skip(char),
     /// `[$...]` - Locale/currency specification
     Locale(LocaleCode),
+    /// General number formatting (used when "General" keyword appears with additional format parts)
+    GeneralNumber,
 }
 
 impl FormatPart {
