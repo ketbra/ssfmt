@@ -124,6 +124,30 @@ fn format_date_part(
         DatePart::Year2 => format!("{:02}", year % 100),
         DatePart::Year4 => format!("{:04}", year),
 
+        // Buddhist calendar (Thai Buddhist Era)
+        DatePart::BuddhistYear2 => {
+            // Thai Buddhist calendar: Gregorian year + 543
+            let buddhist_year = year + 543;
+            format!("{:02}", buddhist_year % 100)
+        }
+        DatePart::BuddhistYear4 => {
+            // Thai Buddhist calendar: Gregorian year + 543
+            let buddhist_year = year + 543;
+            format!("{:04}", buddhist_year)
+        }
+        DatePart::BuddhistYear4Alt => {
+            // Alternative Buddhist calendar era: Gregorian year - 582
+            // Used with B2yyyy prefix
+            let buddhist_year = year - 582;
+            format!("{:04}", buddhist_year)
+        }
+        DatePart::BuddhistYear2Alt => {
+            // Alternative Buddhist calendar era: Gregorian year - 582
+            // Used with B2yy prefix
+            let buddhist_year = year - 582;
+            format!("{:02}", buddhist_year % 100)
+        }
+
         // Month formatting
         DatePart::Month => format!("{}", month),
         DatePart::Month2 => format!("{:02}", month),

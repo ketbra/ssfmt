@@ -146,6 +146,14 @@ pub enum DatePart {
     Second2,
     /// `.0`, `.00`, etc. - Fractional seconds with specified decimal places
     SubSecond(u8),
+    /// `b` or `bb` - Buddhist year (Thai calendar), last 2 digits (Gregorian + 543)
+    BuddhistYear2,
+    /// `bbbb` - Buddhist year (Thai calendar), 4 digits (Gregorian + 543)
+    BuddhistYear4,
+    /// `B2yyyy` - Alternative Buddhist calendar era, 4 digits (Gregorian - 582)
+    BuddhistYear4Alt,
+    /// `B2yy` - Alternative Buddhist calendar era, last 2 digits (Gregorian - 582)
+    BuddhistYear2Alt,
 }
 
 /// AM/PM format style.

@@ -168,6 +168,14 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 Token::Second
             }
+            'b' if !self.in_bracket => {
+                self.advance();
+                Token::BuddhistYear
+            }
+            'B' if !self.in_bracket => {
+                self.advance();
+                Token::BuddhistYearUpper
+            }
 
             // Everything else is a literal
             _ => {

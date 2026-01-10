@@ -39,6 +39,8 @@ pub enum Token {
     Day,    // d
     Hour,   // h
     Second, // s
+    BuddhistYear,      // b (lowercase)
+    BuddhistYearUpper, // B (uppercase)
 
     // Brackets
     OpenBracket,  // [
