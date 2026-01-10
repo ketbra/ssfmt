@@ -232,33 +232,20 @@ fn to_12_hour(hour: u32) -> u32 {
 fn format_ampm(style: AmPmStyle, hour: u32, locale: &Locale) -> String {
     let is_pm = hour >= 12;
 
+    // Excel always outputs uppercase AM/PM regardless of format case
     match style {
-        AmPmStyle::Upper => {
+        AmPmStyle::Upper | AmPmStyle::Lower => {
             if is_pm {
                 locale.pm_string.to_uppercase()
             } else {
                 locale.am_string.to_uppercase()
             }
         }
-        AmPmStyle::Lower => {
-            if is_pm {
-                locale.pm_string.to_lowercase()
-            } else {
-                locale.am_string.to_lowercase()
-            }
-        }
-        AmPmStyle::ShortUpper => {
+        AmPmStyle::ShortUpper | AmPmStyle::ShortLower => {
             if is_pm {
                 "P".to_string()
             } else {
                 "A".to_string()
-            }
-        }
-        AmPmStyle::ShortLower => {
-            if is_pm {
-                "p".to_string()
-            } else {
-                "a".to_string()
             }
         }
     }
