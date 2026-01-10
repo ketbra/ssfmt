@@ -116,6 +116,12 @@ impl<'a> Parser<'a> {
             match &self.current.token {
                 Token::Eof | Token::SectionSep => break,
 
+                // General format keyword - return empty section to trigger fallback formatting
+                Token::General => {
+                    self.advance()?;
+                    break;
+                }
+
                 // Bracket content - could be color, condition, elapsed time, or locale
                 Token::OpenBracket => {
                     let bracket_start = self.current.start;

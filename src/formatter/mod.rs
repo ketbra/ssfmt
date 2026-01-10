@@ -44,30 +44,38 @@ impl NumberFormat {
         // Select the appropriate section based on value
         let section = self.select_section(value);
 
+        // Excel behavior: when a conditional section matches, format using absolute value
+        // Check if this section was selected via a condition
+        let has_conditions = self.sections().iter().any(|s| s.condition.is_some());
+        let use_abs_value = has_conditions && section.condition.is_some();
+        let format_value = if use_abs_value { value.abs() } else { value };
+
         // Handle "General" format (empty section with no parts)
         // This uses fallback formatting which matches Excel's General behavior
-        if section.parts.is_empty() && section.condition.is_none() {
-            return Ok(fallback_format(value));
+        // Note: sections can have conditions or colors and still be General format
+        if section.parts.is_empty() {
+            return Ok(fallback_format(format_value));
         }
 
         // Check if this is a date format
         if section.has_date_parts() {
-            return date::format_date(value, section, opts);
+            return date::format_date(format_value, section, opts);
         }
 
         // Determine if we need to add a minus sign
         // For single-section formats, we add the minus sign ourselves
         // For multi-section formats, the section handles it
         // For literal-only formats (no numeric parts), add minus ONLY if it's a single unescaped single-char literal
+        // But NOT if we're using absolute value due to conditional matching
         let sections = self.sections();
         let num_sections = sections.len();
         let has_numeric_parts = section.parts.iter().any(|p| p.is_numeric_part());
         let is_single_char_literal = section.parts.len() == 1
             && matches!(&section.parts[0], FormatPart::Literal(s) if s.len() == 1);
-        let need_minus_sign = num_sections == 1 && value < 0.0 && (has_numeric_parts || is_single_char_literal);
+        let need_minus_sign = num_sections == 1 && value < 0.0 && (has_numeric_parts || is_single_char_literal) && !use_abs_value;
 
         // Format as a number
-        let mut result = format_number(value, section, opts)?;
+        let mut result = format_number(format_value, section, opts)?;
 
         // Add minus sign for single-section formats with negative values
         // But only if the result doesn't already start with a minus sign
