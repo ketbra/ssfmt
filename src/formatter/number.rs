@@ -376,7 +376,25 @@ fn format_integer(
         return result;
     }
 
-    let output_len = value_digits.len().max(min_digits);
+    // Check if placeholder types are heavily interspersed (e.g., 000#0#0#0##00##)
+    // by counting transitions between different placeholder types
+    // Only treat as interspersed if there are many transitions (complex format)
+    let mut transitions = 0;
+    for i in 1..placeholders.len() {
+        if placeholders[i] != placeholders[i - 1] {
+            transitions += 1;
+        }
+    }
+    let has_interspersed_placeholders = transitions > 1;
+
+    let output_len = if has_interspersed_placeholders {
+        // Interspersed placeholders: add zero count to value digits
+        // This handles formats like #0####### where placeholders are mixed
+        value_digits.len() + min_digits
+    } else {
+        // Consecutive placeholders of same type: use maximum of value digits and required placeholders
+        value_digits.len().max(min_digits)
+    };
 
     let mut result = String::new();
 
@@ -410,8 +428,13 @@ fn format_integer(
         if digit_index >= 0 {
             // We have a digit from the value
             result.insert(0, value_digits[digit_index as usize]);
+        } else if has_interspersed_placeholders {
+            // For interspersed placeholders, padding positions use zeros
+            // We've already calculated output_len = value_digits + zero_count
+            // So all padding positions get '0'
+            result.insert(0, '0');
         } else {
-            // We need to check placeholder for padding
+            // For consecutive placeholders, check placeholder for padding character
             let placeholder_index = placeholders.len() as isize - 1 - pos_from_right as isize;
             if placeholder_index >= 0 {
                 let placeholder = placeholders[placeholder_index as usize];
