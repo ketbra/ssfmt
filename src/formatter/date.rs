@@ -56,6 +56,7 @@ pub fn format_date(
                     second,
                     weekday,
                     has_ampm,
+                    value, // Pass the original serial value for fractional seconds
                     &opts.locale,
                 );
                 result.push_str(&formatted);
@@ -105,6 +106,7 @@ fn format_date_part(
     second: u32,
     weekday: u32,
     has_ampm: bool,
+    serial: f64,
     locale: &Locale,
 ) -> String {
     match part {
@@ -155,15 +157,17 @@ fn format_date_part(
 
         // Sub-second formatting
         DatePart::SubSecond(places) => {
-            // For sub-second precision, we need the fractional seconds
-            // The serial_to_time function rounds, so we need to recalculate
-            // to get fractional seconds
-            let fraction = (second as f64).fract();
+            // For sub-second precision, we need the fractional seconds from the original serial
+            // Calculate total seconds with fractional part
+            let time_fraction = serial.fract().abs();
+            let total_seconds = time_fraction * 86400.0; // seconds in a day
+            let subsecond_fraction = total_seconds.fract();
+
             if places == 0 {
                 String::new()
             } else {
                 let multiplier = 10_u32.pow(places as u32);
-                let subsec = ((fraction * multiplier as f64).round() as u32) % multiplier;
+                let subsec = ((subsecond_fraction * multiplier as f64).round() as u32) % multiplier;
                 format!("{:0width$}", subsec, width = places as usize)
             }
         }
