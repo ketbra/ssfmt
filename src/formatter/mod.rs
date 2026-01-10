@@ -44,6 +44,12 @@ impl NumberFormat {
         // Select the appropriate section based on value
         let section = self.select_section(value);
 
+        // Handle "General" format (empty section with no parts)
+        // This uses fallback formatting which matches Excel's General behavior
+        if section.parts.is_empty() && section.condition.is_none() {
+            return Ok(fallback_format(value));
+        }
+
         // Check if this is a date format
         if section.has_date_parts() {
             return date::format_date(value, section, opts);

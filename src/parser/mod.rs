@@ -17,6 +17,18 @@ pub fn parse(format_code: &str) -> Result<NumberFormat, ParseError> {
         return Err(ParseError::EmptyFormat);
     }
 
+    // Handle "General" format specially - it's Excel's default format
+    // that displays numbers without unnecessary formatting
+    if format_code.eq_ignore_ascii_case("General") {
+        // Create an empty section that will trigger fallback formatting
+        let general_section = Section {
+            condition: None,
+            color: None,
+            parts: Vec::new(),
+        };
+        return Ok(NumberFormat::from_sections(vec![general_section]));
+    }
+
     let mut parser = Parser::new(format_code);
     parser.parse()
 }
