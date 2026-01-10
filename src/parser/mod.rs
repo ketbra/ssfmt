@@ -117,9 +117,19 @@ impl<'a> Parser<'a> {
                 Token::Eof | Token::SectionSep => break,
 
                 // General format keyword - return empty section to trigger fallback formatting
+                // But only if General is the ONLY content (after color/condition)
                 Token::General => {
                     self.advance()?;
-                    break;
+                    // Check if there are more format parts after "General"
+                    if matches!(self.current.token, Token::Eof | Token::SectionSep) {
+                        // Truly just "General" - return empty section for fallback formatting
+                        break;
+                    } else {
+                        // "General" followed by more content (like "General ")
+                        // Add GeneralNumber part to signal General formatting should be used
+                        builder.add_part(FormatPart::GeneralNumber);
+                        // Continue parsing the rest as literals
+                    }
                 }
 
                 // Bracket content - could be color, condition, elapsed time, or locale
