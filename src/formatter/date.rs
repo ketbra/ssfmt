@@ -18,6 +18,14 @@ pub fn format_date(
         .iter()
         .any(|p| matches!(p, FormatPart::AmPm(_)));
 
+    // Check if there are multiple SubSecond parts (affects rounding strategy)
+    let subsecond_count = section
+        .parts
+        .iter()
+        .filter(|p| matches!(p, FormatPart::DatePart(DatePart::SubSecond(_))))
+        .count();
+    let has_multiple_subseconds = subsecond_count > 1;
+
     // Get date components
     // For time-only values (serial < 1), use a default date since we only need time
     let (year, month, day) = if value >= 1.0 {
@@ -57,6 +65,7 @@ pub fn format_date(
                     weekday,
                     has_ampm,
                     value, // Pass the original serial value for fractional seconds
+                    has_multiple_subseconds,
                     &opts.locale,
                 );
                 result.push_str(&formatted);
@@ -107,6 +116,7 @@ fn format_date_part(
     weekday: u32,
     has_ampm: bool,
     serial: f64,
+    has_multiple_subseconds: bool,
     locale: &Locale,
 ) -> String {
     match part {
@@ -167,7 +177,17 @@ fn format_date_part(
                 String::new()
             } else {
                 let multiplier = 10_u32.pow(places as u32);
-                let subsec = ((subsecond_fraction * multiplier as f64).round() as u32) % multiplier;
+                // Round to high precision first to handle floating point errors
+                let high_precision = (subsecond_fraction * 10000.0).round() / 10000.0;
+
+                // Use different rounding strategies based on whether there are multiple subsecond displays
+                let subsec = if has_multiple_subseconds {
+                    // Multiple subsecond displays: truncate for consistency
+                    (high_precision * multiplier as f64) as u32 % multiplier
+                } else {
+                    // Single subsecond display: round
+                    ((high_precision * multiplier as f64).round() as u32) % multiplier
+                };
                 format!("{:0width$}", subsec, width = places as usize)
             }
         }

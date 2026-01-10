@@ -142,7 +142,10 @@ pub fn serial_to_time(serial: f64) -> (u32, u32, u32) {
     let fraction = serial.fract().abs();
 
     // Convert to total seconds in a day (86400 seconds)
-    let total_seconds = (fraction * 86400.0).round() as u32;
+    // Add small epsilon to handle floating point precision errors (e.g., 60479.9999... -> 60480)
+    // but don't round up actual fractional seconds (e.g., 61090.848 stays 61090)
+    // Subsecond precision is calculated separately in format_date_part from the original serial
+    let total_seconds = (fraction * 86400.0 + 1e-9) as u32;
 
     let hours = (total_seconds / 3600) % 24;
     let minutes = (total_seconds % 3600) / 60;
