@@ -323,6 +323,48 @@ impl<'a> Parser<'a> {
                     }
                 }
 
+                // Buddhist calendar
+                Token::BuddhistYear => {
+                    let count = self.count_consecutive(&Token::BuddhistYear)?;
+                    let part = if count >= 4 {
+                        DatePart::BuddhistYear4
+                    } else {
+                        DatePart::BuddhistYear2
+                    };
+                    builder.add_part(FormatPart::DatePart(part));
+                }
+                Token::BuddhistYearUpper => {
+                    self.advance()?;
+                    // Check if this is 'B2' format (alternative Buddhist calendar)
+                    if matches!(self.current.token, Token::Literal('2')) {
+                        self.advance()?;
+                        // B2 is a prefix that modifies subsequent year formatting
+                        // Check if followed by year tokens and convert them to BuddhistYear*Alt
+                        if matches!(self.current.token, Token::Year) {
+                            let count = self.count_consecutive(&Token::Year)?;
+                            if count >= 4 {
+                                // B2yyyy -> use alternative Buddhist calendar for 4-digit year
+                                builder.add_part(FormatPart::DatePart(DatePart::BuddhistYear4Alt));
+                            } else {
+                                // B2yy -> use 2-digit alternative Buddhist year
+                                builder.add_part(FormatPart::DatePart(DatePart::BuddhistYear2Alt));
+                            }
+                        } else {
+                            // B2 not followed by year - treat as literal
+                            builder.add_part(FormatPart::Literal("B2".to_string()));
+                        }
+                    } else {
+                        // Just 'B' by itself - treat as regular Buddhist year
+                        let count = 1 + self.count_consecutive(&Token::BuddhistYearUpper)?;
+                        let part = if count >= 4 {
+                            DatePart::BuddhistYear4
+                        } else {
+                            DatePart::BuddhistYear2
+                        };
+                        builder.add_part(FormatPart::DatePart(part));
+                    }
+                }
+
                 // AM/PM
                 Token::AmPm(s) => {
                     let style = parse_am_pm_style(s);
