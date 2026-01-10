@@ -189,22 +189,16 @@ pub fn fallback_format(value: f64) -> String {
     // Check if we should use scientific notation
     let use_scientific = if abs_value >= 1e11 {
         true
-    } else if abs_value != 0.0 && abs_value < 1e-9 {
-        // Very small numbers use scientific
-        true
-    } else if abs_value != 0.0 && abs_value < 1e-4 {
-        // For numbers in the 1E-9 to 1E-4 range, check significant figures
-        // Excel uses scientific if there are 3+ significant digits
+    } else if abs_value > 0.0 && abs_value < 0.0001 {
+        // For very small numbers (< 0.0001), check if decimal representation fits in 11 chars
+        // Excel uses decimal notation for values >= 0.0001, even if they need rounding
+        // But for values < 0.0001, it uses scientific if the representation is too long
         let test_str = format!("{:.15}", abs_value);
-        // Remove leading "0." and count significant digits
-        let after_decimal = test_str.trim_start_matches("0.");
-        let sig_figs = after_decimal
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .filter(|c| *c != '0')
-            .count();
-        // Use scientific notation if 3 or more significant figures
-        sig_figs >= 3
+        // Trim trailing zeros
+        let trimmed = test_str.trim_end_matches('0').trim_end_matches('.');
+
+        // If it doesn't fit in 11 chars, use scientific notation
+        trimmed.len() > 11
     } else {
         false
     };
@@ -249,8 +243,27 @@ pub fn fallback_format(value: f64) -> String {
             };
             format!("{:.prec$}", value, prec = decimal_places)
         } else {
-            // For numbers < 1, format with up to 10 decimal places
-            format!("{:.10}", value)
+            // For numbers < 1, format with up to 9 decimal places (to fit in 11 chars: "0." + 9 digits)
+            // Excel's limit is 11 chars for the numeric part, not counting the sign
+            // So negative numbers can be up to 12 chars total
+            let max_decimals = 9;
+            let test_format = format!("{:.prec$}", value, prec = max_decimals);
+
+            // Check length of numeric part only (excluding sign for negative numbers)
+            let numeric_part = if value < 0.0 {
+                &test_format[1..] // Skip the '-' sign
+            } else {
+                &test_format[..]
+            };
+
+            // If numeric part exceeds 11 chars, reduce decimal places
+            if numeric_part.len() > 11 {
+                let excess = numeric_part.len() - 11;
+                let reduced_decimals = max_decimals.saturating_sub(excess);
+                format!("{:.prec$}", value, prec = reduced_decimals)
+            } else {
+                test_format
+            }
         };
 
         // Trim trailing zeros after decimal point
