@@ -325,17 +325,22 @@ fn format_decimal(value: f64, placeholders: &[DigitPlaceholder], _opts: &FormatO
         return String::new();
     }
 
+    // Clamp to maximum precision to avoid overflow (f64 has ~15-16 significant digits)
+    // This prevents overflow when casting to u64 with excessive decimal placeholders
+    let effective_places = placeholders.len().min(15);
+
     // Get the decimal digits by multiplying and truncating
-    let multiplier = 10_f64.powi(placeholders.len() as i32);
+    let multiplier = 10_f64.powi(effective_places as i32);
     let decimal_int = (value * multiplier).round() as u64;
-    let decimal_str = format!("{:0>width$}", decimal_int, width = placeholders.len());
+    let decimal_str = format!("{:0>width$}", decimal_int, width = effective_places);
     let decimal_chars: Vec<char> = decimal_str.chars().collect();
 
     let mut result = String::new();
     let mut trailing_zeros_start = placeholders.len();
 
     // Find where trailing zeros start (for # placeholders)
-    for i in (0..placeholders.len()).rev() {
+    // Only scan within effective_places to avoid index out of bounds
+    for i in (0..placeholders.len().min(effective_places)).rev() {
         if decimal_chars.get(i) == Some(&'0') {
             if !placeholders[i].is_required() {
                 trailing_zeros_start = i;
@@ -349,7 +354,12 @@ fn format_decimal(value: f64, placeholders: &[DigitPlaceholder], _opts: &FormatO
 
     // Build result, respecting placeholder rules
     for (i, placeholder) in placeholders.iter().enumerate() {
-        let ch = decimal_chars.get(i).copied().unwrap_or('0');
+        // For placeholders beyond effective precision, use '0'
+        let ch = if i < effective_places {
+            decimal_chars.get(i).copied().unwrap_or('0')
+        } else {
+            '0'
+        };
 
         if i >= trailing_zeros_start && ch == '0' && !placeholder.is_required() {
             // Skip trailing zeros for # placeholders
