@@ -119,29 +119,55 @@ pub fn format_fraction(
 
     // Format integer part (mixed fractions only)
     if is_mixed {
-        if integer_part > 0 || integer_digits.len() > 0 {
+        if integer_part > 0 {
+            // Non-zero integer: show the number
             result.push_str(&format!("{}", integer_part));
+        } else if !integer_digits.is_empty() {
+            // Zero integer with placeholders: show spaces (Excel behavior)
+            for placeholder in integer_digits {
+                // For fractions, Excel treats all placeholder types as spaces when value is 0
+                let c = placeholder.empty_char().unwrap_or(' ');
+                result.push(c);
+            }
         }
         // Add space between integer and fraction
         result.push(' ');
     }
 
-    // Always format the fraction (even if num is 0)
-    // Format numerator with proper placeholder handling
-    let num_str = format_fraction_part(num, numerator_digits);
-    result.push_str(&num_str);
+    // Format the fraction part
+    // For mixed fractions with no fractional part (num=0), use spaces instead of "0/1"
+    if is_mixed && num == 0 {
+        // Add spaces instead of "0/X"
+        // Space for numerator
+        for _ in numerator_digits {
+            result.push(' ');
+        }
+        result.push(' '); // Space for the slash
+        // Space for denominator
+        let denom_width = match denominator {
+            FractionDenom::UpToDigits(d) => *d as usize,
+            FractionDenom::Fixed(_) => format!("{}", denom).len(),
+        };
+        for _ in 0..denom_width {
+            result.push(' ');
+        }
+    } else {
+        // Format numerator with proper placeholder handling
+        let num_str = format_fraction_part(num, numerator_digits);
+        result.push_str(&num_str);
 
-    result.push('/');
+        result.push('/');
 
-    // Format denominator with padding
-    let denom_str = format!("{}", denom);
-    let denom_width = match denominator {
-        FractionDenom::UpToDigits(d) => *d as usize,
-        FractionDenom::Fixed(_) => denom_str.len(),
-    };
-    result.push_str(&denom_str);
-    for _ in 0..(denom_width.saturating_sub(denom_str.len())) {
-        result.push(' ');
+        // Format denominator with padding
+        let denom_str = format!("{}", denom);
+        let denom_width = match denominator {
+            FractionDenom::UpToDigits(d) => *d as usize,
+            FractionDenom::Fixed(_) => denom_str.len(),
+        };
+        result.push_str(&denom_str);
+        for _ in 0..(denom_width.saturating_sub(denom_str.len())) {
+            result.push(' ');
+        }
     }
 
     Ok(result)
