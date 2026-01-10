@@ -261,6 +261,19 @@ fn format_ampm(style: AmPmStyle, hour: u32, locale: &Locale) -> String {
                 "A".to_string()
             }
         }
+        AmPmStyle::MalformedUpper => {
+            // Malformed AM/P pattern: outputs A0/P or A1/P
+            // The '1' appears when 12-hour hour is 12 (noon or midnight)
+            let hour_12 = to_12_hour(hour);
+            let digit = if hour_12 == 12 { '1' } else { '0' };
+            format!("A{}/P", digit)
+        }
+        AmPmStyle::MalformedLower => {
+            // Malformed am/p pattern: outputs a0/p or a1/p
+            let hour_12 = to_12_hour(hour);
+            let digit = if hour_12 == 12 { '1' } else { '0' };
+            format!("a{}/p", digit)
+        }
     }
 }
 
