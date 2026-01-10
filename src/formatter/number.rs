@@ -359,12 +359,19 @@ fn format_integer(
 
         // Check if there's an inline literal at this position
         // Position is from the right (0 = ones place, 1 = tens, etc.)
-        for (literal_pos, literal_str) in inline_literals {
-            if *literal_pos == pos_from_right {
-                // Insert literal before this digit position
-                for ch in literal_str.chars().rev() {
-                    result.insert(0, ch);
-                }
+        // Collect all literals at this position and insert them in reverse order
+        // (since we're building the string from right to left with insert(0))
+        let literals_at_pos: Vec<&str> = inline_literals
+            .iter()
+            .filter(|(pos, _)| *pos == pos_from_right)
+            .map(|(_, s)| s.as_str())
+            .collect();
+
+        // Insert in reverse order so they appear in correct order in final result
+        for literal_str in literals_at_pos.iter().rev() {
+            // Insert each character of this literal
+            for ch in literal_str.chars().rev() {
+                result.insert(0, ch);
             }
         }
 
