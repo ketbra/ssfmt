@@ -174,23 +174,21 @@ impl<'a> Parser<'a> {
                 }
 
                 // Scientific notation - but only if followed by + or -
-                // Otherwise, lowercase 'e' is a date format (year in era)
+                // Otherwise, treat as literal
                 Token::ExponentUpper | Token::ExponentLower => {
                     let is_lower = matches!(self.current.token, Token::ExponentLower);
                     self.advance()?;
 
-                    // Check if followed by + or - (scientific notation) or not (date format)
+                    // Check if followed by + or - (scientific notation) or just a literal
                     if matches!(self.current.token, Token::Plus | Token::Minus) {
                         let show_plus = matches!(self.current.token, Token::Plus);
                         self.advance()?;
                         let upper = !is_lower;
                         builder.add_part(FormatPart::Scientific { upper, show_plus });
-                    } else if is_lower {
-                        // Standalone 'e' is a date format (year in era, same as yyyy)
-                        builder.add_part(FormatPart::DatePart(DatePart::Year4));
                     } else {
-                        // Standalone 'E' without +/- is invalid, treat as literal
-                        builder.add_part(FormatPart::Literal("E".to_string()));
+                        // Standalone 'e' or 'E' without +/- is just a literal character
+                        let ch = if is_lower { "e" } else { "E" };
+                        builder.add_part(FormatPart::Literal(ch.to_string()));
                     }
                 }
 
