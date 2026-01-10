@@ -507,12 +507,177 @@ impl SectionBuilder {
         self.parts.push(part);
     }
 
-    fn build(self) -> Section {
+    fn build(mut self) -> Section {
+        // Post-process to detect fraction patterns
+        self.detect_fractions();
+
         Section {
             condition: self.condition,
             color: self.color,
             parts: self.parts,
         }
+    }
+
+    /// Detect and merge fraction patterns in the parts list.
+    /// Looks for patterns like: [digits] "/" [digits] and converts to Fraction
+    fn detect_fractions(&mut self) {
+        let mut new_parts = Vec::new();
+        let mut i = 0;
+
+        while i < self.parts.len() {
+            // Look for a "/" literal that could be part of a fraction
+            if let Some(slash_pos) = self.find_slash_position(i) {
+                // Check if there are digit placeholders or a fixed number after the slash
+                let denom_start = slash_pos + 1;
+                let denom_digits = self.collect_digit_placeholders(denom_start);
+
+                // Also check for fixed denominator (numeric literal)
+                let fixed_denom = if denom_digits.is_empty() && denom_start < self.parts.len() {
+                    if let FormatPart::Literal(s) = &self.parts[denom_start] {
+                        s.parse::<u32>().ok()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if !denom_digits.is_empty() || fixed_denom.is_some() {
+                    // Found denominator, now look for numerator before slash
+                    let num_end = slash_pos;
+                    if num_end > 0 {
+                        let num_digits = self.collect_digit_placeholders_reverse(num_end - 1);
+
+                        if !num_digits.is_empty() {
+                            // Found numerator, now collect any integer part before that
+                            let num_start = num_end - num_digits.len();
+                            let int_digits = if num_start > 0 {
+                                self.collect_integer_part(num_start - 1, &mut new_parts)
+                            } else {
+                                Vec::new()
+                            };
+
+                            // Create fraction part
+                            let denominator = if let Some(fixed) = fixed_denom {
+                                crate::ast::FractionDenom::Fixed(fixed)
+                            } else {
+                                crate::ast::FractionDenom::UpToDigits(denom_digits.len() as u8)
+                            };
+
+                            let fraction = FormatPart::Fraction {
+                                integer_digits: int_digits,
+                                numerator_digits: num_digits,
+                                denominator,
+                            };
+                            new_parts.push(fraction);
+
+                            // Skip past all the parts we consumed
+                            let skip_count = if fixed_denom.is_some() {
+                                1 // Skip the fixed denominator literal
+                            } else {
+                                denom_digits.len() // Skip all denominator digit placeholders
+                            };
+                            i = denom_start + skip_count;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // Not part of a fraction, keep the part as-is
+            if i < self.parts.len() {
+                new_parts.push(self.parts[i].clone());
+                i += 1;
+            }
+        }
+
+        self.parts = new_parts;
+    }
+
+    /// Find position of "/" literal starting from index
+    fn find_slash_position(&self, start: usize) -> Option<usize> {
+        for i in start..self.parts.len() {
+            if matches!(&self.parts[i], FormatPart::Literal(s) if s == "/") {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Collect consecutive digit placeholders starting from index
+    fn collect_digit_placeholders(&self, start: usize) -> Vec<DigitPlaceholder> {
+        let mut digits = Vec::new();
+        for i in start..self.parts.len() {
+            if let FormatPart::Digit(d) = &self.parts[i] {
+                digits.push(*d);
+            } else {
+                break;
+            }
+        }
+        digits
+    }
+
+    /// Collect consecutive digit placeholders in reverse from index
+    fn collect_digit_placeholders_reverse(&self, end: usize) -> Vec<DigitPlaceholder> {
+        let mut digits = Vec::new();
+        let mut i = end as isize;
+        while i >= 0 {
+            if let Some(FormatPart::Digit(d)) = self.parts.get(i as usize) {
+                digits.push(*d);
+            } else {
+                break;
+            }
+            i -= 1;
+        }
+        digits.reverse();
+        digits
+    }
+
+    /// Collect integer part before numerator (digits before a space typically)
+    fn collect_integer_part(&self, end: usize, new_parts: &mut Vec<FormatPart>) -> Vec<DigitPlaceholder> {
+        let mut int_digits = Vec::new();
+        let mut last_digit_pos = None;
+
+        // Scan backwards from end to find digit placeholders
+        let mut i = end as isize;
+        let mut found_space = false;
+
+        while i >= 0 {
+            match &self.parts.get(i as usize) {
+                Some(FormatPart::Digit(d)) => {
+                    last_digit_pos = Some(i as usize);
+                    int_digits.push(*d);
+                }
+                Some(FormatPart::Literal(s)) if s == " " && !int_digits.is_empty() => {
+                    found_space = true;
+                    break;
+                }
+                Some(FormatPart::ThousandsSeparator) if !int_digits.is_empty() => {
+                    // Allow thousands separator in integer part
+                }
+                Some(FormatPart::Literal(_)) if int_digits.is_empty() => {
+                    // Haven't started collecting digits yet, keep this part
+                }
+                _ => {
+                    if !int_digits.is_empty() {
+                        break;
+                    }
+                }
+            }
+            i -= 1;
+        }
+
+        // If we found integer digits, remove them from new_parts
+        if !int_digits.is_empty() && found_space {
+            int_digits.reverse();
+            // Remove parts from where integer starts
+            let remove_from = (i + 1) as usize;
+            new_parts.truncate(remove_from);
+        } else {
+            int_digits.clear();
+        }
+
+        int_digits
     }
 }
 

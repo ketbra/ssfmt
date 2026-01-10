@@ -139,6 +139,16 @@ pub fn format_number(
         return format_scientific(value, section, upper, show_plus, opts);
     }
 
+    // Check if this is a fraction format
+    let has_fraction = section
+        .parts
+        .iter()
+        .any(|p| matches!(p, FormatPart::Fraction { .. }));
+
+    if has_fraction {
+        return crate::formatter::fraction::format_fraction(value, section, opts);
+    }
+
     // Check if section has any numeric placeholders
     let has_numeric_parts = section
         .parts
