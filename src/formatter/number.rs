@@ -547,6 +547,13 @@ fn format_decimal(
         }
     }
 
+    // Append any decimal inline literals that come after all placeholders
+    for (literal_pos, literal_str) in decimal_inline_literals {
+        if *literal_pos >= placeholders.len() {
+            result.push_str(literal_str);
+        }
+    }
+
     result
 }
 

@@ -80,9 +80,9 @@ impl NumberFormat {
         let mut result = format_number(format_value, section, opts)?;
 
         // Add minus sign for single-section formats with negative values
-        // But only if the result doesn't already start with a minus sign
-        // (fallback_format and some other cases already include the sign)
-        if need_minus_sign && !result.starts_with('-') {
+        // Note: format_number uses abs(value), so it never includes the minus sign
+        // We always add it here for negative values in single-section formats
+        if need_minus_sign {
             result.insert(0, '-');
         }
 
