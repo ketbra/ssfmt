@@ -36,22 +36,38 @@ pub fn format_fraction(
     let mut integer_part = abs_value.trunc() as i64;
     let frac_part = abs_value.fract();
 
+    // Determine if this is a mixed fraction or improper fraction
+    let is_mixed = !integer_digits.is_empty();
+
     // Find best fraction approximation
-    let (mut num, denom) = match denominator {
-        FractionDenom::UpToDigits(digits) => {
-            // For 1 digit: max denom = 9, for 2 digits: max denom = 99, etc.
-            let max_denom = 10_u32.pow(*digits as u32) - 1;
-            find_best_fraction(frac_part, max_denom)
+    let (mut num, denom) = if is_mixed {
+        // Mixed fraction: approximate the fractional part only
+        match denominator {
+            FractionDenom::UpToDigits(digits) => {
+                let max_denom = 10_u32.pow(*digits as u32) - 1;
+                find_best_fraction(frac_part, max_denom)
+            }
+            FractionDenom::Fixed(d) => {
+                let num = (frac_part * (*d as f64)).round() as u32;
+                (num, *d)
+            }
         }
-        FractionDenom::Fixed(d) => {
-            // For fixed denominator, just round to nearest fraction
-            let num = (frac_part * (*d as f64)).round() as u32;
-            (num, *d)
+    } else {
+        // Improper fraction: approximate the entire value
+        match denominator {
+            FractionDenom::UpToDigits(digits) => {
+                let max_denom = 10_u32.pow(*digits as u32) - 1;
+                find_best_fraction(abs_value, max_denom)
+            }
+            FractionDenom::Fixed(d) => {
+                let num = (abs_value * (*d as f64)).round() as u32;
+                (num, *d)
+            }
         }
     };
 
-    // If fraction rounds to 1 or more, add to integer part
-    if num >= denom && denom > 0 {
+    // If fraction rounds to 1 or more (mixed fraction only), add to integer part
+    if is_mixed && num >= denom && denom > 0 {
         let whole = num / denom;
         integer_part += whole as i64;
         num %= denom;
@@ -65,13 +81,14 @@ pub fn format_fraction(
         result.push('-');
     }
 
-    // Format integer part
-    if integer_part > 0 || integer_digits.len() > 0 {
-        result.push_str(&format!("{}", integer_part));
+    // Format integer part (mixed fractions only)
+    if is_mixed {
+        if integer_part > 0 || integer_digits.len() > 0 {
+            result.push_str(&format!("{}", integer_part));
+        }
+        // Add space between integer and fraction
+        result.push(' ');
     }
-
-    // Add space between integer and fraction
-    result.push(' ');
 
     if num > 0 {
         // Format numerator with padding
