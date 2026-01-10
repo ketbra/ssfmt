@@ -17,6 +17,9 @@ pub struct FormatAnalysis {
     pub percent_count: usize,
     /// Thousands scaling factor (trailing commas divide by 1000 each)
     pub thousands_scale: usize,
+    /// Literals that appear inline with integer digits (position -> literal)
+    /// Position is counted from the right (0 = ones place, 1 = tens, etc.)
+    pub inline_literals: Vec<(usize, String)>,
     /// Parts before the number (literals, etc.)
     pub prefix_parts: Vec<FormatPart>,
     /// Parts after the number (literals, percent, etc.)
@@ -45,6 +48,7 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
     let mut decimal_placeholders = Vec::new();
     let mut has_thousands_separator = false;
     let mut percent_count = 0;
+    let mut inline_literals = Vec::new();
     let mut prefix_parts = Vec::new();
     let mut suffix_parts = Vec::new();
 
@@ -66,6 +70,7 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
             FormatPart::DecimalPoint => {
                 after_decimal = true;
                 seen_digit = true;
+                after_digits = true;  // Mark that integer digit sequence is complete
             }
             FormatPart::ThousandsSeparator => {
                 // Regular thousands separator
@@ -80,11 +85,32 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
                     prefix_parts.push(part.clone());
                 }
             }
-            FormatPart::Literal(_) | FormatPart::Locale(_) => {
+            FormatPart::Literal(s) | FormatPart::Locale(crate::ast::LocaleCode { currency: Some(s), .. }) => {
+                let literal_str = if let FormatPart::Literal(s) = part {
+                    s.clone()
+                } else if let FormatPart::Locale(loc) = part {
+                    loc.currency.clone().unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
+                if !seen_digit {
+                    // Before any digits - prefix
+                    prefix_parts.push(part.clone());
+                } else if after_digits {
+                    // After all digits (after decimal or after digit sequence ended) - suffix
+                    suffix_parts.push(part.clone());
+                } else {
+                    // Among integer digits - inline literal
+                    // Store the current placeholder count - we'll convert to position later
+                    inline_literals.push((integer_placeholders.len(), literal_str));
+                }
+            }
+            FormatPart::Locale(loc) if loc.currency.is_none() => {
+                // Locale without currency - treat as before
                 if !seen_digit {
                     prefix_parts.push(part.clone());
-                } else {
-                    after_digits = true;
+                } else if after_digits {
                     suffix_parts.push(part.clone());
                 }
             }
@@ -132,12 +158,30 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
     }
     let thousands_scale = trailing_commas;
 
+    // Convert inline_literals from placeholder indices to positions from right
+    // Inline literals are stored as (placeholder_count, string) where placeholder_count
+    // is the number of placeholders added BEFORE seeing the literal.
+    // This means the literal appears before placeholder at index=placeholder_count.
+    // When formatting right-to-left, placeholder at index I is at position (total-1-I) from right.
+    let total_placeholders = integer_placeholders.len();
+    let inline_literals_converted: Vec<(usize, String)> = inline_literals
+        .into_iter()
+        .map(|(placeholder_count, literal)| {
+            // Literal appears before placeholder[placeholder_count]
+            // That placeholder is at position (total - 1 - placeholder_count) from right
+            // Insert the literal AT that position (before that placeholder's digit)
+            let pos_from_right = total_placeholders - placeholder_count;
+            (pos_from_right, literal)
+        })
+        .collect();
+
     FormatAnalysis {
         integer_placeholders,
         decimal_placeholders,
         has_thousands_separator,
         percent_count,
         thousands_scale,
+        inline_literals: inline_literals_converted,
         prefix_parts,
         suffix_parts,
     }
@@ -248,6 +292,7 @@ fn format_with_placeholders(value: f64, analysis: &FormatAnalysis, opts: &Format
         integer_part,
         &analysis.integer_placeholders,
         analysis.has_thousands_separator,
+        &analysis.inline_literals,
         opts,
     );
 
@@ -268,6 +313,7 @@ fn format_integer(
     value: u64,
     placeholders: &[DigitPlaceholder],
     use_thousands: bool,
+    inline_literals: &[(usize, String)],
     opts: &FormatOptions,
 ) -> String {
     let value_str = value.to_string();
@@ -293,6 +339,17 @@ fn format_integer(
             result.insert(0, opts.locale.thousands_separator);
         }
 
+        // Check if there's an inline literal at this position
+        // Position is from the right (0 = ones place, 1 = tens, etc.)
+        for (literal_pos, literal_str) in inline_literals {
+            if *literal_pos == pos_from_right {
+                // Insert literal before this digit position
+                for ch in literal_str.chars().rev() {
+                    result.insert(0, ch);
+                }
+            }
+        }
+
         if digit_index >= 0 {
             // We have a digit from the value
             result.insert(0, value_digits[digit_index as usize]);
@@ -313,6 +370,18 @@ fn format_integer(
         // Check if we have any required placeholders
         if placeholders.iter().any(|p| p.is_required()) {
             result.push('0');
+        }
+    }
+
+    // Insert any inline literals that are at positions beyond what we formatted
+    // (literals in the leftmost optional placeholder region)
+    for (literal_pos, literal_str) in inline_literals {
+        if *literal_pos >= output_len {
+            // This literal is to the left of all displayed digits
+            // Insert it at the beginning
+            for ch in literal_str.chars().rev() {
+                result.insert(0, ch);
+            }
         }
     }
 
