@@ -190,21 +190,33 @@ impl<'a> Parser<'a> {
                 }
 
                 // Scientific notation - but only if followed by + or -
-                // Otherwise, treat as literal
+                // Otherwise, check if it's an era year (e/E patterns like 'e', 'ee', 'eee')
                 Token::ExponentUpper | Token::ExponentLower => {
                     let is_lower = matches!(self.current.token, Token::ExponentLower);
                     self.advance()?;
 
-                    // Check if followed by + or - (scientific notation) or just a literal
+                    // Check if followed by + or - (scientific notation) or just a literal/date part
                     if matches!(self.current.token, Token::Plus | Token::Minus) {
                         let show_plus = matches!(self.current.token, Token::Plus);
                         self.advance()?;
                         let upper = !is_lower;
                         builder.add_part(FormatPart::Scientific { upper, show_plus });
                     } else {
-                        // Standalone 'e' or 'E' without +/- is just a literal character
-                        let ch = if is_lower { "e" } else { "E" };
-                        builder.add_part(FormatPart::Literal(ch.to_string()));
+                        // Standalone 'e' or 'E' - could be era year (date format)
+                        // Count consecutive e/E tokens
+                        let mut count = 1;
+                        while matches!(
+                            self.current.token,
+                            Token::ExponentLower | Token::ExponentUpper
+                        ) {
+                            count += 1;
+                            self.advance()?;
+                        }
+
+                        // Era year format: e, ee, eee, eeee all output 4-digit year
+                        // For Gregorian calendar, era year is same as regular year
+                        // Excel always shows the full year for 'e' format
+                        builder.add_part(FormatPart::DatePart(DatePart::Year4));
                     }
                 }
 
