@@ -346,16 +346,22 @@ pub fn format_number(
         }
     }
 
+    let analysis = analyze_format(section);
+
     // Integer fast path: use integer-only arithmetic to avoid precision loss
     // Based on SSF's separate code paths in bits/66_numint.js vs bits/63_numflt.js
     // Safe integer range for f64 is < 2^53 (9007199254740992)
+    //
+    // Note: We only use the integer path if there are no decimal placeholders, because
+    // handling optional decimal placeholders (# vs 0) requires the float path logic.
     const MAX_SAFE_INTEGER: f64 = 9007199254740992.0; // 2^53
-    if value.fract() == 0.0 && value.abs() < MAX_SAFE_INTEGER {
-        // Value is an exact integer within safe range - use integer path
+    if value.fract() == 0.0
+        && value.abs() < MAX_SAFE_INTEGER
+        && analysis.decimal_placeholders.is_empty()
+    {
+        // Value is an exact integer within safe range and no decimal formatting needed
         return format_number_as_integer(value as i64, section, opts);
     }
-
-    let analysis = analyze_format(section);
 
     // Apply percent multiplication
     let mut adjusted_value = value.abs();
