@@ -56,6 +56,29 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
     let mut prefix_parts = Vec::new();
     let mut suffix_parts = Vec::new();
 
+    // First, count trailing commas by scanning backwards from the end
+    // Any ThousandsSeparator after the last Digit/DecimalPoint is a trailing comma
+    let mut trailing_comma_count = 0;
+    for part in section.parts.iter().rev() {
+        match part {
+            FormatPart::ThousandsSeparator => {
+                trailing_comma_count += 1;
+            }
+            FormatPart::Digit(_) | FormatPart::DecimalPoint => {
+                // Found a digit or decimal, stop counting trailing commas
+                break;
+            }
+            _ => {
+                // Other parts (Fill, Skip, Literal) - continue scanning
+            }
+        }
+    }
+
+    // Track which commas are trailing (to exclude from has_thousands_separator)
+    let mut commas_seen = 0;
+    let total_commas = section.parts.iter().filter(|p| matches!(p, FormatPart::ThousandsSeparator)).count();
+    let non_trailing_comma_count = total_commas - trailing_comma_count;
+
     let mut seen_digit = false;
     let mut after_decimal = false;
     let mut after_digits = false;
@@ -77,8 +100,12 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
                 after_digits = true;  // Mark that integer digit sequence is complete
             }
             FormatPart::ThousandsSeparator => {
-                // Regular thousands separator
-                has_thousands_separator = true;
+                commas_seen += 1;
+                // Only count as thousands separator if it's not a trailing comma
+                // Trailing commas are only for scaling, not for formatting separators
+                if commas_seen <= non_trailing_comma_count {
+                    has_thousands_separator = true;
+                }
             }
             FormatPart::Percent => {
                 percent_count += 1;
@@ -149,24 +176,8 @@ pub fn analyze_format(section: &Section) -> FormatAnalysis {
         integer_placeholders.push(DigitPlaceholder::Hash);
     }
 
-    // Count trailing commas by scanning backwards from the end
-    // Any ThousandsSeparator after the last Digit/DecimalPoint is a trailing comma
-    let mut trailing_commas = 0;
-    for part in section.parts.iter().rev() {
-        match part {
-            FormatPart::ThousandsSeparator => {
-                trailing_commas += 1;
-            }
-            FormatPart::Digit(_) | FormatPart::DecimalPoint => {
-                // Found a digit or decimal, stop counting trailing commas
-                break;
-            }
-            _ => {
-                // Other parts (Fill, Skip, Literal) - continue scanning
-            }
-        }
-    }
-    let thousands_scale = trailing_commas;
+    // Use the trailing comma count we calculated earlier
+    let thousands_scale = trailing_comma_count;
 
     // Convert inline_literals from placeholder indices to positions from right
     // Inline literals are stored as (placeholder_count, string) where placeholder_count
