@@ -138,13 +138,30 @@ fn serial_to_date_1904(days: i64) -> Option<(i32, u32, u32)> {
 /// # Returns
 /// * `(hours, minutes, seconds)` where hours is 0-23, minutes and seconds are 0-59
 pub fn serial_to_time(serial: f64) -> (u32, u32, u32) {
+    serial_to_time_impl(serial, true)
+}
+
+/// Convert Excel serial number to time components (hour, minute, second).
+/// The `round_seconds` parameter controls whether to round fractional seconds.
+/// Set to false when the format includes subsecond display (.0, .00, etc.).
+pub fn serial_to_time_with_rounding(serial: f64, round_seconds: bool) -> (u32, u32, u32) {
+    serial_to_time_impl(serial, round_seconds)
+}
+
+fn serial_to_time_impl(serial: f64, round_seconds: bool) -> (u32, u32, u32) {
     // Get the fractional part (time component)
     let fraction = serial.fract().abs();
 
     // Convert to total seconds in a day (86400 seconds)
-    // Round to handle fractional seconds close to the next second
-    // Excel rounds seconds when displaying time without subseconds
-    let total_seconds = (fraction * 86400.0).round() as u32;
+    let total_seconds = if round_seconds {
+        // Round to handle fractional seconds close to the next second
+        // Excel rounds seconds when displaying time without subseconds
+        (fraction * 86400.0).round() as u32
+    } else {
+        // Truncate when format includes subsecond display
+        // This allows .0, .00, etc. to show the fractional part correctly
+        (fraction * 86400.0) as u32
+    };
 
     let hours = (total_seconds / 3600) % 24;
     let minutes = (total_seconds % 3600) / 60;
