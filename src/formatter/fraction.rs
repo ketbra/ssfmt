@@ -122,12 +122,18 @@ pub fn format_fraction(
         if integer_part > 0 {
             // Non-zero integer: show the number
             result.push_str(&format!("{}", integer_part));
+        } else if num == 0 {
+            // Entire value rounds to zero: show '0' for integer
+            // Excel shows "0    " not "     " for very small values
+            result.push('0');
         } else if !integer_digits.is_empty() {
-            // Zero integer with placeholders: show spaces (Excel behavior)
+            // Zero integer with non-zero fraction: show placeholders
             for placeholder in integer_digits {
-                // For fractions, Excel treats all placeholder types as spaces when value is 0
-                let c = placeholder.empty_char().unwrap_or(' ');
-                result.push(c);
+                // Hash shows nothing, Question shows space, Zero shows '0'
+                if let Some(c) = placeholder.empty_char() {
+                    result.push(c);
+                }
+                // Hash returns None, so nothing is added
             }
         }
         // Add space between integer and fraction

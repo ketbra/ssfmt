@@ -49,9 +49,9 @@ pub fn format_date(
         serial_to_date(value, opts.date_system)
             .ok_or(FormatError::DateOutOfRange { serial: value })?
     } else {
-        // For time-only formatting, use epoch date as placeholder
-        // The date components won't be used if format only has time parts
-        (1900, 1, 1)
+        // For time-only formatting, use day 0 to indicate no date component
+        // Excel shows "1/0/00" for m/d/yy format with time-only values
+        (1900, 1, 0)
     };
 
     // Get time components
