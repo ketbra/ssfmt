@@ -44,15 +44,20 @@ impl<'a> Lexer<'a> {
         let ch = self.current_char().unwrap();
 
         // Try to match special keywords first (before consuming individual characters)
+        // Only check if current character could start the pattern (avoid unnecessary work)
         if !self.in_bracket {
-            // Try to match "General" keyword
-            if let Some(general_token) = self.try_match_general() {
-                return Ok(general_token);
+            // Try to match "General" keyword (only if starts with 'G' or 'g')
+            if ch == 'G' || ch == 'g' {
+                if let Some(general_token) = self.try_match_general() {
+                    return Ok(general_token);
+                }
             }
 
-            // Try to match AM/PM patterns
-            if let Some(am_pm_token) = self.try_match_am_pm() {
-                return Ok(am_pm_token);
+            // Try to match AM/PM patterns (only if starts with 'A' or 'a')
+            if ch == 'A' || ch == 'a' {
+                if let Some(am_pm_token) = self.try_match_am_pm() {
+                    return Ok(am_pm_token);
+                }
             }
         }
 
@@ -256,9 +261,9 @@ impl<'a> Lexer<'a> {
     fn try_match_general(&mut self) -> Option<SpannedToken> {
         let remaining = self.remaining();
         let start = self.position;
-        let upper = remaining.to_uppercase();
 
-        if upper.starts_with("GENERAL") {
+        // Case-insensitive match without allocation
+        if remaining.len() >= 7 && remaining[..7].eq_ignore_ascii_case("General") {
             // Match "General" keyword regardless of what follows
             // The parser will handle "General" followed by literals correctly
             self.position += 7; // len("General")
@@ -276,11 +281,12 @@ impl<'a> Lexer<'a> {
     fn try_match_am_pm(&mut self) -> Option<SpannedToken> {
         let remaining = self.remaining();
         let start = self.position;
-        let upper = remaining.to_uppercase();
 
-        if upper.starts_with("AM/PM") {
-            let matched: String = remaining.chars().take(5).collect();
-            self.position += matched.len();
+        // Case-insensitive match without allocation (except for the final token string)
+        // Check longest patterns first
+        if remaining.len() >= 5 && remaining[..5].eq_ignore_ascii_case("AM/PM") {
+            let matched = remaining[..5].to_string();
+            self.position += 5;
             return Some(SpannedToken {
                 token: Token::AmPm(matched),
                 start,
@@ -288,18 +294,18 @@ impl<'a> Lexer<'a> {
             });
         }
         // Malformed AM/P pattern (4 chars) - must check before A/P
-        if upper.starts_with("AM/P") {
-            let matched: String = remaining.chars().take(4).collect();
-            self.position += matched.len();
+        if remaining.len() >= 4 && remaining[..4].eq_ignore_ascii_case("AM/P") {
+            let matched = remaining[..4].to_string();
+            self.position += 4;
             return Some(SpannedToken {
                 token: Token::AmPm(matched),
                 start,
                 end: self.position,
             });
         }
-        if upper.starts_with("A/P") {
-            let matched: String = remaining.chars().take(3).collect();
-            self.position += matched.len();
+        if remaining.len() >= 3 && remaining[..3].eq_ignore_ascii_case("A/P") {
+            let matched = remaining[..3].to_string();
+            self.position += 3;
             return Some(SpannedToken {
                 token: Token::AmPm(matched),
                 start,

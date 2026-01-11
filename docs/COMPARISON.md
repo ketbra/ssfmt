@@ -37,16 +37,16 @@ This measures the time to parse a format string and format a single value. This 
 
 | Format Type | ssfmt (ns/op) | numfmt-rs (ns/op) | Winner |
 |-------------|---------------|-------------------|--------|
-| General (integer) | 104.9 | 245.7 | **ssfmt 2.34x** |
-| General (decimal) | 257.7 | 757.6 | **ssfmt 2.94x** |
-| Number with decimals | 557.5 | 859.8 | **ssfmt 1.54x** |
-| Percentage | 537.9 | 768.8 | **ssfmt 1.43x** |
-| Scientific notation | 392.5 | 852.3 | **ssfmt 2.17x** |
-| Fraction | 380.3 | 561.6 | **ssfmt 1.48x** |
-| Date format | 441.6 | 377.5 | numfmt-rs 1.17x |
-| Time format | 452.6 | 373.3 | numfmt-rs 1.21x |
-| Complex date/time | 708.6 | 542.8 | numfmt-rs 1.31x |
-| Elapsed time | 394.9 | 393.4 | ~tied |
+| General (integer) | 101 | 242 | **ssfmt 2.40x** |
+| General (decimal) | 256 | 683 | **ssfmt 2.66x** |
+| Number with decimals | 575 | 799 | **ssfmt 1.39x** |
+| Percentage | 523 | 775 | **ssfmt 1.48x** |
+| Scientific notation | 385 | 830 | **ssfmt 2.16x** |
+| Fraction | 355 | 550 | **ssfmt 1.55x** |
+| Date format | 394 | 385 | ~tied |
+| Time format | 464 | 385 | numfmt-rs 1.21x |
+| Complex date/time | 675 | 524 | numfmt-rs 1.29x |
+| Elapsed time | 407 | 382 | numfmt-rs 1.06x |
 
 ### Scenario 2: Pre-Compiled AST (ssfmt) vs Internal Cache (numfmt-rs)
 
@@ -56,17 +56,18 @@ This is the typical spreadsheet use case where the same format is applied to tho
 
 | Format Type | ssfmt (ns/op) | numfmt-rs (ns/op) | Winner |
 |-------------|---------------|-------------------|--------|
-| General (integer) | 31.3 | 237.5 | **ssfmt 7.58x** |
-| Number with decimals | 417.0 | 799.3 | **ssfmt 1.92x** |
-| Date format | 243.7 | 378.9 | **ssfmt 1.55x** |
-| Time format | 287.0 | 374.1 | **ssfmt 1.30x** |
+| General (integer) | 33 | 246 | **ssfmt 7.5x** |
+| Number with decimals | 407 | 798 | **ssfmt 1.96x** |
+| Date format | 243 | 387 | **ssfmt 1.59x** |
+| Time format | 314 | 387 | **ssfmt 1.23x** |
 
 ### Analysis
 
-- **ssfmt is faster for number formatting** in both scenarios (1.4-2.9x one-shot, up to 7.6x pre-compiled)
-- **For date/time formatting**: numfmt-rs slightly faster in one-shot scenario (1.2-1.3x), but ssfmt faster when pre-compiled (1.3-1.6x)
+- **ssfmt is faster for number formatting** in both scenarios (1.4-2.7x one-shot, up to 7.5x pre-compiled)
+- **For date/time formatting**: numfmt-rs slightly faster in one-shot scenario (1.1-1.3x due to winnow parser), but ssfmt faster when pre-compiled (1.2-1.6x)
 - **Pre-compilation matters**: ssfmt's explicit AST approach shows its advantage in the cached scenario
 - **General integer fast path**: ssfmt uses an integer fast path that avoids floating-point operations for whole numbers
+- **Parser optimization**: ssfmt avoids allocations during lexing with case-insensitive comparisons
 
 ### Performance Note
 
