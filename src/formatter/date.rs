@@ -18,13 +18,21 @@ pub fn format_date(
         .iter()
         .any(|p| matches!(p, FormatPart::AmPm(_)));
 
-    // Check if there are multiple SubSecond parts (affects rounding strategy)
-    let subsecond_count = section
+    // Check if there are SubSecond parts and find the maximum precision
+    let subsecond_places: Vec<u8> = section
         .parts
         .iter()
-        .filter(|p| matches!(p, FormatPart::DatePart(DatePart::SubSecond(_))))
-        .count();
-    let has_multiple_subseconds = subsecond_count > 1;
+        .filter_map(|p| {
+            if let FormatPart::DatePart(DatePart::SubSecond(places)) = p {
+                Some(*places)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let has_multiple_subseconds = subsecond_places.len() > 1;
+    let max_subsecond_precision = subsecond_places.iter().max().copied();
 
     // Round the serial value if it's very close to an integer
     // This handles floating point precision errors like 2.9999999999999996 -> 3.0
@@ -47,7 +55,26 @@ pub fn format_date(
     };
 
     // Get time components
-    let (hour, minute, second) = serial_to_time(adjusted_value);
+    // If there are subseconds, round to that precision to ensure proper carry-over
+    // (e.g., 35.9999 seconds with .0 precision becomes 36.0, not 35.0)
+    let (hour, minute, second) = if let Some(precision) = max_subsecond_precision {
+        // Round to subsecond precision
+        let fraction = adjusted_value.fract().abs();
+        let total_seconds = fraction * 86400.0;
+
+        // Round to the appropriate decimal place
+        let divisor = 10_f64.powi(precision as i32);
+        let rounded_seconds = (total_seconds * divisor).round() / divisor;
+        let total_seconds_int = rounded_seconds as u32;
+
+        let hour = (total_seconds_int / 3600) % 24;
+        let minute = (total_seconds_int % 3600) / 60;
+        let second = total_seconds_int % 60;
+        (hour, minute, second)
+    } else {
+        // No subseconds: use regular rounding
+        crate::date_serial::serial_to_time(adjusted_value)
+    };
 
     // Get weekday (1=Sunday...7=Saturday)
     // For time-only values, use Sunday as default
@@ -282,17 +309,22 @@ fn format_elapsed(part: ElapsedPart, serial_value: f64) -> String {
     match part {
         ElapsedPart::Hours => {
             // Total hours = serial_value * 24
-            let total_hours = (serial_value * 24.0).round() as i64;
+            // Truncate (don't round) to align with regular mm:ss components
+            // For example, 123456.789 days * 24 = 2962962.936 hours
+            // Should show as 2962962:56:10, not 2962963:56:10
+            let total_hours = (serial_value * 24.0).floor() as i64;
             format!("{}", total_hours)
         }
         ElapsedPart::Minutes => {
             // Total minutes = serial_value * 24 * 60
-            let total_minutes = (serial_value * 24.0 * 60.0).round() as i64;
+            // Truncate to align with regular ss components
+            let total_minutes = (serial_value * 24.0 * 60.0).floor() as i64;
             format!("{}", total_minutes)
         }
         ElapsedPart::Seconds => {
             // Total seconds = serial_value * 24 * 60 * 60
-            let total_seconds = (serial_value * 24.0 * 60.0 * 60.0).round() as i64;
+            // Truncate to align with subsecond display (.0, .00, etc.)
+            let total_seconds = (serial_value * 24.0 * 60.0 * 60.0).floor() as i64;
             format!("{}", total_seconds)
         }
     }

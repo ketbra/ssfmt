@@ -554,7 +554,7 @@ impl<'a> Parser<'a> {
 
     /// Check if there are seconds tokens appearing immediately after in a time context.
     /// Used to disambiguate mm:ss (minutes:seconds) from mm-dd (month-day).
-    /// Returns true if the pattern ":s" or ":ss" appears next, indicating time format.
+    /// Returns true if 's' or 'S' appears next (with or without colon), indicating time format.
     /// Note: Called while current token is a Month token, so need to skip past 'm'/'M' chars.
     fn has_seconds_ahead(&self) -> bool {
         // Look ahead in the lexer's remaining input, starting from current position
@@ -564,13 +564,18 @@ impl<'a> Parser<'a> {
         remaining = remaining.trim_start_matches(|c| c == 'm' || c == 'M');
         remaining = remaining.trim_start();
 
-        // Check for time context pattern: ":s" or ":ss" indicates minutes:seconds
+        // Check for time context patterns:
+        // 1. ":s" or ":ss" - minutes:seconds with colon (e.g., "mm:ss")
+        // 2. "s" or "ss" - minutes+seconds without colon (e.g., "mmss.0")
         if remaining.starts_with(':') {
             // Skip the colon and check if 's' or 'S' follows
             let after_colon = &remaining[1..];
             if let Some(first_ch) = after_colon.chars().next() {
                 return first_ch == 's' || first_ch == 'S';
             }
+        } else if let Some(first_ch) = remaining.chars().next() {
+            // Check if 's' or 'S' follows immediately (without colon)
+            return first_ch == 's' || first_ch == 'S';
         }
 
         false
