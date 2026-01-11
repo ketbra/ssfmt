@@ -5,7 +5,7 @@ Based on analysis of SSF source code, these improvements would make the codebase
 ## High Priority (Significant Impact)
 
 ### 1. Add Section Metadata to Eliminate Repeated Scanning
-**Status**: ⏳ Not started
+**Status**: ✅ COMPLETED
 **Impact**: Major performance improvement + cleaner code
 **Effort**: Medium
 
@@ -54,7 +54,7 @@ pub enum TimeUnit {
 ---
 
 ### 2. Apply Pre-Rounding Uniformly to All Time Formatting
-**Status**: ⏳ Not started
+**Status**: ✅ COMPLETED
 **Impact**: Fix potential correctness issues
 **Effort**: Low
 
@@ -82,7 +82,7 @@ switch(bt) {
 ---
 
 ### 3. Add Integer Fast Path for Large Numbers
-**Status**: ⏳ Not started
+**Status**: ✅ COMPLETED
 **Impact**: Fix precision issues for large integers (fixes oddities tests #130, #133, #134)
 **Effort**: Medium
 
@@ -114,7 +114,7 @@ pub fn format_number(value: f64, section: &Section, opts: &FormatOptions) -> Res
 ## Medium Priority (Code Quality)
 
 ### 4. Unified Placeholder Formatting
-**Status**: ⏳ Not started
+**Status**: ✅ COMPLETED
 **Impact**: Reduce code duplication
 **Effort**: Medium
 
@@ -147,7 +147,7 @@ pub fn format_with_placeholders(
 ---
 
 ### 5. Calendar Mode in Format Context
-**Status**: ⏳ Not started
+**Status**: ✅ COMPLETED (covered by #1)
 **Impact**: Cleaner design
 **Effort**: Low
 
@@ -155,7 +155,7 @@ pub fn format_with_placeholders(
 
 **SSF Approach**: Pass `b2` boolean parameter through entire chain
 
-**Solution**: Store in SectionMetadata (already covered by #1)
+**Solution**: Store in SectionMetadata (completed as part of #1)
 
 ---
 
@@ -187,7 +187,36 @@ write!(result, " {}/{}", num_str, denom_str)?;
 
 ## Completed Items
 
-None yet.
+### ✅ Task #1: Section Metadata to Eliminate Repeated Scanning
+- Added `SectionMetadata` struct with pre-computed format characteristics
+- Created `TimeUnit` and `FormatType` enums
+- Modified parser to compute metadata once during parsing
+- Updated formatters to use metadata instead of repeated scans
+- **Commit**: f32d4d2
+
+### ✅ Task #2: Apply Pre-Rounding Uniformly to All Time Formatting
+- Added `apply_time_prerounding()` function
+- Implements SSF's pre-rounding algorithm based on smallest displayed time unit
+- Ensures consistent rounding across all date/time formats
+- **Commit**: 2610aee
+
+### ✅ Task #3: Add Integer Fast Path for Large Numbers
+- Added `format_number_as_integer()` for integer-only arithmetic
+- Modified `format_number()` to detect and dispatch safe integers
+- Avoids precision loss for large integers
+- **Commit**: 93573ad
+
+### ✅ Task #4: Unified Placeholder Formatting
+- Added `format_simple_with_placeholders()` helper in number.rs
+- Unified logic for mapping digits to placeholders
+- Updated fraction formatting to use the helper
+- Eliminated 32 lines of duplicated code
+- **Commit**: 2659ce4
+
+### ✅ Task #5: Calendar Mode in Format Context
+- Completed as part of Task #1
+- `is_hijri` field stored in SectionMetadata
+- No longer need to scan parts during formatting
 
 ---
 
