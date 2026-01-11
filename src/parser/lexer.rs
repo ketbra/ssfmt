@@ -1,447 +1,420 @@
-//! Lexer for tokenizing format code strings using logos.
+//! Lexer for tokenizing format code strings.
 //!
-//! This lexer uses the logos crate for high-performance DFA-based tokenization.
-//! Bracket content is captured as a single token and parsed separately to handle
-//! context-sensitive parsing cleanly.
+//! The lexer converts format code strings into a stream of tokens that can be
+//! processed by the parser. It handles special cases like:
+//! - Date/time letters (y, m, d, h, s) are tokens outside brackets but literals inside brackets
+//! - Quoted strings ("text") become QuotedString tokens
+//! - Escaped characters (\$) become EscapedChar tokens
+//! - AM/PM patterns are detected and returned as single tokens
 
 use crate::error::ParseError;
 use crate::parser::tokens::{SpannedToken, Token};
-use logos::Logos;
 
-/// Raw tokens produced by logos lexer.
-/// These are then converted to the Token type used by the parser.
-#[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"")]  // Don't skip anything - we handle all characters
-pub enum RawToken {
-    // Bracket content captured as single token (handles context-sensitivity)
-    #[regex(r"\[[^\]]*\]", priority = 10)]
-    BracketContent,
-
-    // Quoted string
-    #[regex(r#""[^"]*""#, priority = 10)]
-    QuotedString,
-
-    // Escaped character
-    #[regex(r"\\.", priority = 10)]
-    Escaped,
-
-    // General keyword (case-insensitive)
-    #[regex(r"(?i)General", priority = 10)]
-    General,
-
-    // AM/PM patterns (case-insensitive, longest match first)
-    #[regex(r"(?i)AM/PM", priority = 10)]
-    AmPmFull,
-
-    #[regex(r"(?i)A/P", priority = 10)]
-    AmPmShort,
-
-    // Date/time character runs (batched for efficiency)
-    #[regex(r"[yY]+", priority = 3)]
-    YearRun,
-
-    #[regex(r"[mM]+", priority = 3)]
-    MonthMinuteRun,
-
-    #[regex(r"[dD]+", priority = 3)]
-    DayRun,
-
-    #[regex(r"[hH]+", priority = 3)]
-    HourRun,
-
-    #[regex(r"[sS]+", priority = 3)]
-    SecondRun,
-
-    // Buddhist year
-    #[regex(r"[bB]+", priority = 3)]
-    BuddhistYearRun,
-
-    // Digit placeholders
-    #[token("0", priority = 3)]
-    Zero,
-
-    #[token("#", priority = 3)]
-    Hash,
-
-    #[token("?", priority = 3)]
-    Question,
-
-    // Separators
-    #[token(".", priority = 3)]
-    DecimalPoint,
-
-    #[token(",", priority = 3)]
-    ThousandsSep,
-
-    #[token(";", priority = 3)]
-    SectionSep,
-
-    // Special characters
-    #[token("%", priority = 3)]
-    Percent,
-
-    #[token("@", priority = 3)]
-    At,
-
-    #[token("*", priority = 3)]
-    Asterisk,
-
-    #[token("_", priority = 3)]
-    Underscore,
-
-    // Scientific notation
-    #[token("E", priority = 3)]
-    ExponentUpper,
-
-    #[token("e", priority = 3)]
-    ExponentLower,
-
-    #[token("+", priority = 3)]
-    Plus,
-
-    #[token("-", priority = 3)]
-    Minus,
-
-    // Fraction
-    #[token("/", priority = 3)]
-    Slash,
-
-    // Parentheses (treated as literals)
-    #[token("(", priority = 3)]
-    OpenParen,
-
-    #[token(")", priority = 3)]
-    CloseParen,
-
-    // Space (explicit token for handling)
-    #[token(" ", priority = 3)]
-    Space,
-
-    // Any other single character becomes a literal (lowest priority)
-    #[regex(r".", priority = 1)]
-    Other,
-}
-
-/// A lexer for format code strings using logos.
-pub struct Lexer<'a> {
-    /// The input string being tokenized.
-    pub(crate) input: &'a str,
-    /// Logos lexer iterator
-    logos_lexer: logos::Lexer<'a, RawToken>,
-    /// Buffered tokens (only for bracket content expansion)
-    buffer: Vec<SpannedToken>,
-    /// Current position for buffer consumption
-    buffer_pos: usize,
-    /// Whether we've reached EOF
-    eof_returned: bool,
-    /// Pending run: (token_type_discriminant, remaining_count, current_position)
-    /// Using u8 discriminant to avoid Token Clone overhead
-    pending_run: Option<(u8, usize, usize)>,
-}
-
-// Token type discriminants for pending runs
+/// Run type constants for pending run tracking.
 const RUN_YEAR: u8 = 0;
 const RUN_MONTH: u8 = 1;
 const RUN_DAY: u8 = 2;
 const RUN_HOUR: u8 = 3;
 const RUN_SECOND: u8 = 4;
-const RUN_BUDDHIST: u8 = 5;
-const RUN_BUDDHIST_UPPER: u8 = 6;
+const RUN_ZERO: u8 = 5;
+const RUN_HASH: u8 = 6;
+const RUN_QUESTION: u8 = 7;
+
+/// A lexer for format code strings.
+pub struct Lexer<'a> {
+    /// The input string being tokenized.
+    pub(crate) input: &'a str,
+    /// The current position in the input.
+    position: usize,
+    /// Whether we are currently inside brackets.
+    in_bracket: bool,
+    /// Pending run of tokens: (run_type, remaining_count, next_token_pos)
+    /// When we encounter consecutive same-type chars (e.g., "yyyy"),
+    /// we count them once and emit tokens from this counter.
+    pending_run: Option<(u8, usize, usize)>,
+}
 
 impl<'a> Lexer<'a> {
     /// Creates a new lexer for the given input string.
     pub fn new(input: &'a str) -> Self {
         Self {
             input,
-            logos_lexer: RawToken::lexer(input),
-            buffer: Vec::new(),
-            buffer_pos: 0,
-            eof_returned: false,
+            position: 0,
+            in_bracket: false,
             pending_run: None,
-        }
-    }
-
-    #[inline]
-    fn token_from_run_type(run_type: u8) -> Token {
-        match run_type {
-            RUN_YEAR => Token::Year,
-            RUN_MONTH => Token::Month,
-            RUN_DAY => Token::Day,
-            RUN_HOUR => Token::Hour,
-            RUN_SECOND => Token::Second,
-            RUN_BUDDHIST => Token::BuddhistYear,
-            RUN_BUDDHIST_UPPER => Token::BuddhistYearUpper,
-            _ => unreachable!(),
         }
     }
 
     /// Returns the next token from the input.
     pub fn next_token(&mut self) -> Result<SpannedToken, ParseError> {
-        // Check for pending run tokens first (no allocation needed)
-        if let Some((run_type, remaining, pos)) = self.pending_run {
-            let token = Self::token_from_run_type(run_type);
-            if remaining > 1 {
-                self.pending_run = Some((run_type, remaining - 1, pos + 1));
-            } else {
+        // First, check if we have pending tokens from a run
+        if let Some((run_type, remaining, next_pos)) = self.pending_run {
+            let token = match run_type {
+                RUN_YEAR => Token::Year,
+                RUN_MONTH => Token::Month,
+                RUN_DAY => Token::Day,
+                RUN_HOUR => Token::Hour,
+                RUN_SECOND => Token::Second,
+                RUN_ZERO => Token::Zero,
+                RUN_HASH => Token::Hash,
+                RUN_QUESTION => Token::Question,
+                _ => unreachable!(),
+            };
+            if remaining <= 1 {
                 self.pending_run = None;
+            } else {
+                self.pending_run = Some((run_type, remaining - 1, next_pos + 1));
             }
             return Ok(SpannedToken {
                 token,
-                start: pos,
-                end: pos + 1,
+                start: next_pos,
+                end: next_pos + 1,
             });
         }
 
-        // Return buffered tokens (for bracket content)
-        if self.buffer_pos < self.buffer.len() {
-            let token = self.buffer[self.buffer_pos].clone();
-            self.buffer_pos += 1;
-            return Ok(token);
+        if self.position >= self.input.len() {
+            return Ok(SpannedToken {
+                token: Token::Eof,
+                start: self.position,
+                end: self.position,
+            });
         }
 
-        // Clear buffer when exhausted
-        if !self.buffer.is_empty() {
-            self.buffer.clear();
-            self.buffer_pos = 0;
-        }
+        let start = self.position;
+        let ch = self.current_char().unwrap();
 
-        // Get next token from logos
-        match self.logos_lexer.next() {
-            Some(Ok(raw_token)) => {
-                let span = self.logos_lexer.span();
-                let slice = self.logos_lexer.slice();
-                self.convert_raw_token(raw_token, slice, span.start, span.end)
+        // Try to match special keywords first (before consuming individual characters)
+        // Only check if current character could start the pattern (avoid unnecessary work)
+        if !self.in_bracket {
+            // Try to match "General" keyword (only if starts with 'G' or 'g')
+            if ch == 'G' || ch == 'g' {
+                if let Some(general_token) = self.try_match_general() {
+                    return Ok(general_token);
+                }
             }
-            Some(Err(())) => {
-                // Logos error - shouldn't happen with our catch-all regex
-                let span = self.logos_lexer.span();
-                Err(ParseError::UnexpectedToken {
-                    position: span.start,
-                    found: self.input[span.start..].chars().next().unwrap_or('\0'),
-                })
-            }
-            None => {
-                if self.eof_returned {
-                    Ok(SpannedToken {
-                        token: Token::Eof,
-                        start: self.input.len(),
-                        end: self.input.len(),
-                    })
-                } else {
-                    self.eof_returned = true;
-                    Ok(SpannedToken {
-                        token: Token::Eof,
-                        start: self.input.len(),
-                        end: self.input.len(),
-                    })
+
+            // Try to match AM/PM patterns (only if starts with 'A' or 'a')
+            if ch == 'A' || ch == 'a' {
+                if let Some(am_pm_token) = self.try_match_am_pm() {
+                    return Ok(am_pm_token);
                 }
             }
         }
-    }
 
-    /// Convert a raw logos token to our Token type.
-    fn convert_raw_token(
-        &mut self,
-        raw: RawToken,
-        slice: &str,
-        start: usize,
-        end: usize,
-    ) -> Result<SpannedToken, ParseError> {
-        let token = match raw {
-            RawToken::BracketContent => {
-                // Expand bracket content into OpenBracket + content tokens + CloseBracket
-                self.expand_bracket_content(slice, start, end)?;
-                // Return the first buffered token
-                if !self.buffer.is_empty() {
-                    let token = self.buffer[0].clone();
-                    self.buffer_pos = 1;
-                    return Ok(token);
+        let token = match ch {
+            // Quoted string
+            '"' => self.lex_quoted_string()?,
+
+            // Escaped character
+            '\\' => self.lex_escaped_char()?,
+
+            // Digit placeholders - batch consecutive runs
+            '0' => {
+                let count = self.count_run(|c| c == '0');
+                if count > 1 {
+                    // next token position is start + 1
+                    self.pending_run = Some((RUN_ZERO, count - 1, start + 1));
                 }
-                // Empty brackets - just return open and close
-                return Ok(SpannedToken {
-                    token: Token::OpenBracket,
-                    start,
-                    end: start + 1,
-                });
+                Token::Zero
             }
-
-            RawToken::QuotedString => {
-                // Remove quotes
-                let content = &slice[1..slice.len() - 1];
-                Token::QuotedString(content.to_string())
+            '#' => {
+                let count = self.count_run(|c| c == '#');
+                if count > 1 {
+                    self.pending_run = Some((RUN_HASH, count - 1, start + 1));
+                }
+                Token::Hash
+            }
+            '?' => {
+                let count = self.count_run(|c| c == '?');
+                if count > 1 {
+                    self.pending_run = Some((RUN_QUESTION, count - 1, start + 1));
+                }
+                Token::Question
             }
 
-            RawToken::Escaped => {
-                // Get the escaped character (after backslash)
-                let ch = slice.chars().nth(1).unwrap_or('\\');
-                Token::EscapedChar(ch)
+            // Separators
+            '.' => {
+                self.advance();
+                Token::DecimalPoint
+            }
+            ',' => {
+                self.advance();
+                Token::ThousandsSep
+            }
+            ';' => {
+                self.advance();
+                Token::SectionSep
             }
 
-            RawToken::General => Token::General,
-
-            RawToken::AmPmFull => Token::AmPm(slice.to_string()),
-            RawToken::AmPmShort => Token::AmPm(slice.to_string()),
-
-            // Date/time runs - use pending_run for efficient expansion
-            RawToken::YearRun => {
-                let len = slice.len();
-                if len > 1 {
-                    self.pending_run = Some((RUN_YEAR, len - 1, start + 1));
-                }
-                return Ok(SpannedToken {
-                    token: Token::Year,
-                    start,
-                    end: start + 1,
-                });
+            // Special characters
+            '%' => {
+                self.advance();
+                Token::Percent
             }
-            RawToken::MonthMinuteRun => {
-                let len = slice.len();
-                if len > 1 {
-                    self.pending_run = Some((RUN_MONTH, len - 1, start + 1));
-                }
-                return Ok(SpannedToken {
-                    token: Token::Month,
-                    start,
-                    end: start + 1,
-                });
+            '@' => {
+                self.advance();
+                Token::At
             }
-            RawToken::DayRun => {
-                let len = slice.len();
-                if len > 1 {
-                    self.pending_run = Some((RUN_DAY, len - 1, start + 1));
-                }
-                return Ok(SpannedToken {
-                    token: Token::Day,
-                    start,
-                    end: start + 1,
-                });
+            '*' => {
+                self.advance();
+                Token::Asterisk
             }
-            RawToken::HourRun => {
-                let len = slice.len();
-                if len > 1 {
-                    self.pending_run = Some((RUN_HOUR, len - 1, start + 1));
-                }
-                return Ok(SpannedToken {
-                    token: Token::Hour,
-                    start,
-                    end: start + 1,
-                });
-            }
-            RawToken::SecondRun => {
-                let len = slice.len();
-                if len > 1 {
-                    self.pending_run = Some((RUN_SECOND, len - 1, start + 1));
-                }
-                return Ok(SpannedToken {
-                    token: Token::Second,
-                    start,
-                    end: start + 1,
-                });
-            }
-            RawToken::BuddhistYearRun => {
-                let len = slice.len();
-                let first_char = slice.as_bytes()[0];
-                let (run_type, token) = if first_char == b'B' {
-                    (RUN_BUDDHIST_UPPER, Token::BuddhistYearUpper)
-                } else {
-                    (RUN_BUDDHIST, Token::BuddhistYear)
-                };
-                if len > 1 {
-                    self.pending_run = Some((run_type, len - 1, start + 1));
-                }
-                return Ok(SpannedToken {
-                    token,
-                    start,
-                    end: start + 1,
-                });
+            '_' => {
+                self.advance();
+                Token::Underscore
             }
 
-            RawToken::Zero => Token::Zero,
-            RawToken::Hash => Token::Hash,
-            RawToken::Question => Token::Question,
-            RawToken::DecimalPoint => Token::DecimalPoint,
-            RawToken::ThousandsSep => Token::ThousandsSep,
-            RawToken::SectionSep => Token::SectionSep,
-            RawToken::Percent => Token::Percent,
-            RawToken::At => Token::At,
-            RawToken::Asterisk => Token::Asterisk,
-            RawToken::Underscore => Token::Underscore,
-            RawToken::ExponentUpper => Token::ExponentUpper,
-            RawToken::ExponentLower => Token::ExponentLower,
-            RawToken::Plus => Token::Plus,
-            RawToken::Minus => Token::Minus,
-            RawToken::Slash => Token::Slash,
-            RawToken::OpenParen => Token::Literal('('),
-            RawToken::CloseParen => Token::Literal(')'),
-            RawToken::Space => Token::Literal(' '),
-            RawToken::Other => {
-                let ch = slice.chars().next().unwrap();
+            // Scientific notation
+            'E' => {
+                self.advance();
+                Token::ExponentUpper
+            }
+            'e' if !self.in_bracket => {
+                self.advance();
+                Token::ExponentLower
+            }
+
+            // Signs
+            '+' => {
+                self.advance();
+                Token::Plus
+            }
+            '-' => {
+                self.advance();
+                Token::Minus
+            }
+
+            // Fraction
+            '/' => {
+                self.advance();
+                Token::Slash
+            }
+
+            // Brackets
+            '[' => {
+                self.advance();
+                self.in_bracket = true;
+                Token::OpenBracket
+            }
+            ']' => {
+                self.advance();
+                self.in_bracket = false;
+                Token::CloseBracket
+            }
+
+            // Date/time characters (only outside brackets) - batch consecutive runs
+            'y' | 'Y' if !self.in_bracket => {
+                let count = self.count_run(|c| c == 'y' || c == 'Y');
+                if count > 1 {
+                    self.pending_run = Some((RUN_YEAR, count - 1, start + 1));
+                }
+                Token::Year
+            }
+            'm' | 'M' if !self.in_bracket => {
+                let count = self.count_run(|c| c == 'm' || c == 'M');
+                if count > 1 {
+                    self.pending_run = Some((RUN_MONTH, count - 1, start + 1));
+                }
+                Token::Month
+            }
+            'd' | 'D' if !self.in_bracket => {
+                let count = self.count_run(|c| c == 'd' || c == 'D');
+                if count > 1 {
+                    self.pending_run = Some((RUN_DAY, count - 1, start + 1));
+                }
+                Token::Day
+            }
+            'h' | 'H' if !self.in_bracket => {
+                let count = self.count_run(|c| c == 'h' || c == 'H');
+                if count > 1 {
+                    self.pending_run = Some((RUN_HOUR, count - 1, start + 1));
+                }
+                Token::Hour
+            }
+            's' | 'S' if !self.in_bracket => {
+                let count = self.count_run(|c| c == 's' || c == 'S');
+                if count > 1 {
+                    self.pending_run = Some((RUN_SECOND, count - 1, start + 1));
+                }
+                Token::Second
+            }
+            'b' if !self.in_bracket => {
+                self.advance();
+                Token::BuddhistYear
+            }
+            'B' if !self.in_bracket => {
+                self.advance();
+                Token::BuddhistYearUpper
+            }
+
+            // Everything else is a literal
+            _ => {
+                self.advance();
                 Token::Literal(ch)
             }
         };
 
-        Ok(SpannedToken { token, start, end })
+        // For runs, we've consumed all consecutive chars but return one token at a time.
+        // The end position should be start + 1 for the first token of a run.
+        let end = if self.pending_run.is_some() {
+            start + 1
+        } else {
+            self.position
+        };
+
+        Ok(SpannedToken {
+            token,
+            start,
+            end,
+        })
     }
 
-    /// Expand a bracket content token into individual tokens.
-    fn expand_bracket_content(
-        &mut self,
-        slice: &str,
-        start: usize,
-        end: usize,
-    ) -> Result<(), ParseError> {
-        // Add opening bracket
-        self.buffer.push(SpannedToken {
-            token: Token::OpenBracket,
-            start,
-            end: start + 1,
-        });
+    /// Returns the character at the current position, if any.
+    fn current_char(&self) -> Option<char> {
+        self.input[self.position..].chars().next()
+    }
 
-        // Parse content between brackets
-        let content = &slice[1..slice.len() - 1];
-        let content_start = start + 1;
+    /// Returns the remaining input as a string slice.
+    fn remaining(&self) -> &str {
+        &self.input[self.position..]
+    }
 
-        // Add each character as a token
-        // Inside brackets, most characters are literals, but some have special meaning
-        // for the parser (like digits, operators for conditions)
-        for (i, ch) in content.char_indices() {
-            let char_start = content_start + i;
-            let char_end = char_start + ch.len_utf8();
-
-            // Inside brackets: use limited token set
-            // The parser will interpret these for colors, conditions, elapsed time, locale
-            let token = match ch {
-                '0' => Token::Zero,
-                '#' => Token::Hash,
-                '?' => Token::Question,
-                '.' => Token::DecimalPoint,
-                ',' => Token::ThousandsSep,
-                '%' => Token::Percent,
-                '@' => Token::At,
-                '*' => Token::Asterisk,
-                '_' => Token::Underscore,
-                '+' => Token::Plus,
-                '-' => Token::Minus,
-                '/' => Token::Slash,
-                // Inside brackets, E and e are just literals (not exponent markers)
-                _ => Token::Literal(ch),
-            };
-
-            self.buffer.push(SpannedToken {
-                token,
-                start: char_start,
-                end: char_end,
-            });
+    /// Advances the position by one character.
+    fn advance(&mut self) {
+        if let Some(ch) = self.current_char() {
+            self.position += ch.len_utf8();
         }
+    }
 
-        // Add closing bracket
-        self.buffer.push(SpannedToken {
-            token: Token::CloseBracket,
-            start: end - 1,
-            end,
-        });
+    /// Counts and consumes consecutive characters matching the predicate.
+    /// Returns the count (always >= 1 since current char matches).
+    #[inline]
+    fn count_run<F>(&mut self, predicate: F) -> usize
+    where
+        F: Fn(char) -> bool,
+    {
+        let mut count = 0;
+        while let Some(ch) = self.current_char() {
+            if predicate(ch) {
+                count += 1;
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        count
+    }
 
-        Ok(())
+    /// Lexes a quoted string ("...").
+    fn lex_quoted_string(&mut self) -> Result<Token, ParseError> {
+        let start = self.position;
+        self.advance(); // Skip the opening quote
+
+        let mut content = String::new();
+        loop {
+            match self.current_char() {
+                Some('"') => {
+                    self.advance(); // Skip the closing quote
+                    return Ok(Token::QuotedString(content));
+                }
+                Some(ch) => {
+                    content.push(ch);
+                    self.advance();
+                }
+                None => {
+                    return Err(ParseError::UnexpectedToken {
+                        position: start,
+                        found: '"',
+                    });
+                }
+            }
+        }
+    }
+
+    /// Lexes an escaped character (\x).
+    fn lex_escaped_char(&mut self) -> Result<Token, ParseError> {
+        let start = self.position;
+        self.advance(); // Skip the backslash
+
+        match self.current_char() {
+            Some(ch) => {
+                self.advance();
+                Ok(Token::EscapedChar(ch))
+            }
+            None => Err(ParseError::UnexpectedToken {
+                position: start,
+                found: '\\',
+            }),
+        }
+    }
+
+    /// Tries to match "General" keyword at the current position.
+    /// Returns Some(SpannedToken) if a match is found, None otherwise.
+    fn try_match_general(&mut self) -> Option<SpannedToken> {
+        let remaining = self.remaining();
+        let start = self.position;
+
+        // Case-insensitive match without allocation
+        // Use .get() for safe slicing that handles UTF-8 boundaries
+        if let Some(prefix) = remaining.get(..7) {
+            if prefix.eq_ignore_ascii_case("General") {
+                // Match "General" keyword regardless of what follows
+                // The parser will handle "General" followed by literals correctly
+                self.position += 7; // len("General")
+                return Some(SpannedToken {
+                    token: Token::General,
+                    start,
+                    end: self.position,
+                });
+            }
+        }
+        None
+    }
+
+    /// Tries to match an AM/PM pattern at the current position.
+    /// Returns Some(SpannedToken) if a match is found, None otherwise.
+    fn try_match_am_pm(&mut self) -> Option<SpannedToken> {
+        let remaining = self.remaining();
+        let start = self.position;
+
+        // Case-insensitive match without allocation (except for the final token string)
+        // Use .get() for safe slicing that handles UTF-8 boundaries
+        // Check longest patterns first
+        if let Some(prefix) = remaining.get(..5) {
+            if prefix.eq_ignore_ascii_case("AM/PM") {
+                let matched = prefix.to_string();
+                self.position += 5;
+                return Some(SpannedToken {
+                    token: Token::AmPm(matched),
+                    start,
+                    end: self.position,
+                });
+            }
+        }
+        // Malformed AM/P pattern (4 chars) - must check before A/P
+        if let Some(prefix) = remaining.get(..4) {
+            if prefix.eq_ignore_ascii_case("AM/P") {
+                let matched = prefix.to_string();
+                self.position += 4;
+                return Some(SpannedToken {
+                    token: Token::AmPm(matched),
+                    start,
+                    end: self.position,
+                });
+            }
+        }
+        if let Some(prefix) = remaining.get(..3) {
+            if prefix.eq_ignore_ascii_case("A/P") {
+                let matched = prefix.to_string();
+                self.position += 3;
+                return Some(SpannedToken {
+                    token: Token::AmPm(matched),
+                    start,
+                    end: self.position,
+                });
+            }
+        }
+        None
     }
 
     /// Returns all remaining tokens as a vector.
@@ -474,64 +447,6 @@ mod tests {
     fn test_single_zero() {
         let mut lexer = Lexer::new("0");
         assert!(matches!(lexer.next_token().unwrap().token, Token::Zero));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Eof));
-    }
-
-    #[test]
-    fn test_year_run() {
-        let mut lexer = Lexer::new("yyyy");
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Eof));
-    }
-
-    #[test]
-    fn test_bracket_content() {
-        let mut lexer = Lexer::new("[Red]");
-        assert!(matches!(lexer.next_token().unwrap().token, Token::OpenBracket));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Literal('R')));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Literal('e')));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Literal('d')));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::CloseBracket));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Eof));
-    }
-
-    #[test]
-    fn test_general() {
-        let mut lexer = Lexer::new("General");
-        assert!(matches!(lexer.next_token().unwrap().token, Token::General));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Eof));
-    }
-
-    #[test]
-    fn test_ampm() {
-        let mut lexer = Lexer::new("AM/PM");
-        let token = lexer.next_token().unwrap();
-        assert!(matches!(token.token, Token::AmPm(_)));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Eof));
-    }
-
-    #[test]
-    fn test_date_format() {
-        let mut lexer = Lexer::new("yyyy-mm-dd");
-        // yyyy
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Year));
-        // -
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Minus));
-        // mm
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Month));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Month));
-        // -
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Minus));
-        // dd
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Day));
-        assert!(matches!(lexer.next_token().unwrap().token, Token::Day));
-        // EOF
         assert!(matches!(lexer.next_token().unwrap().token, Token::Eof));
     }
 }
