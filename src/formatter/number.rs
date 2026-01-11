@@ -23,7 +23,8 @@ pub(crate) fn format_simple_with_placeholders(
         return value_str;
     }
 
-    let mut result = String::new();
+    // Build right-to-left into Vec, then reverse once (O(n) instead of O(n²) with insert(0))
+    let mut chars = Vec::with_capacity(placeholders.len());
 
     // Process from right to left
     for pos_from_right in 0..placeholders.len() {
@@ -33,16 +34,17 @@ pub(crate) fn format_simple_with_placeholders(
 
         if digit_index >= 0 {
             // We have a digit from the value
-            result.insert(0, value_digits[digit_index as usize]);
+            chars.push(value_digits[digit_index as usize]);
         } else {
             // Use placeholder's empty character for padding
             if let Some(c) = placeholder.empty_char() {
-                result.insert(0, c);
+                chars.push(c);
             }
         }
     }
 
-    result
+    chars.reverse();
+    chars.into_iter().collect()
 }
 
 /// Analysis of a format section's numeric structure.
@@ -526,7 +528,12 @@ fn format_integer(
         value_digits.len().max(min_digits)
     };
 
-    let mut result = String::new();
+    // Build right-to-left into Vec, then reverse once (O(n) instead of O(n²) with insert(0))
+    // Estimate capacity: output_len + separators + inline literals
+    let separator_count = if use_thousands { output_len / 3 } else { 0 };
+    let literal_chars: usize = inline_literals.iter().map(|(_, s)| s.len()).sum();
+    let estimated_capacity = output_len + separator_count + literal_chars;
+    let mut chars = Vec::with_capacity(estimated_capacity);
 
     // Process from right to left (least significant first)
     for (digit_count, pos_from_right) in (0..output_len).enumerate() {
@@ -534,66 +541,67 @@ fn format_integer(
 
         // Add thousands separator if needed (but not at position 0)
         if use_thousands && digit_count > 0 && digit_count % 3 == 0 {
-            result.insert(0, opts.locale.thousands_separator);
+            chars.push(opts.locale.thousands_separator);
         }
 
         // Check if there's an inline literal at this position
         // Position is from the right (0 = ones place, 1 = tens, etc.)
-        // Collect all literals at this position and insert them in reverse order
-        // (since we're building the string from right to left with insert(0))
+        // Collect all literals at this position and push them
         let literals_at_pos: Vec<&str> = inline_literals
             .iter()
             .filter(|(pos, _)| *pos == pos_from_right)
             .map(|(_, s)| s.as_str())
             .collect();
 
-        // Insert in reverse order so they appear in correct order in final result
+        // Push in reverse order (will be reversed back at the end)
         for literal_str in literals_at_pos.iter().rev() {
-            // Insert each character of this literal
             for ch in literal_str.chars().rev() {
-                result.insert(0, ch);
+                chars.push(ch);
             }
         }
 
         if digit_index >= 0 {
             // We have a digit from the value
-            result.insert(0, value_digits[digit_index as usize]);
+            chars.push(value_digits[digit_index as usize]);
         } else if has_interspersed_placeholders {
             // For interspersed placeholders, padding positions use zeros
             // We've already calculated output_len = value_digits + zero_count
             // So all padding positions get '0'
-            result.insert(0, '0');
+            chars.push('0');
         } else {
             // For consecutive placeholders, check placeholder for padding character
             let placeholder_index = placeholders.len() as isize - 1 - pos_from_right as isize;
             if placeholder_index >= 0 {
                 let placeholder = placeholders[placeholder_index as usize];
                 if let Some(c) = placeholder.empty_char() {
-                    result.insert(0, c);
+                    chars.push(c);
                 }
             }
         }
     }
 
     // Handle the case where we have no digits but need at least one
-    if result.is_empty() {
+    if chars.is_empty() {
         // Check if we have any required placeholders
         if placeholders.iter().any(|p| p.is_required()) {
-            result.push('0');
+            chars.push('0');
         }
     }
 
-    // Insert any inline literals that are at positions beyond what we formatted
+    // Push any inline literals that are at positions beyond what we formatted
     // (literals in the leftmost optional placeholder region)
     for (literal_pos, literal_str) in inline_literals {
         if *literal_pos >= output_len {
             // This literal is to the left of all displayed digits
-            // Insert it at the beginning
             for ch in literal_str.chars().rev() {
-                result.insert(0, ch);
+                chars.push(ch);
             }
         }
     }
+
+    // Reverse once and collect into String
+    chars.reverse();
+    let result: String = chars.into_iter().collect();
 
     result
 }
@@ -673,13 +681,31 @@ fn format_decimal(
     result
 }
 
+/// Calculate the exact character count for format parts (prefix/suffix).
+fn count_part_chars(parts: &[FormatPart]) -> usize {
+    parts.iter().map(|part| {
+        match part {
+            FormatPart::Literal(s) | FormatPart::EscapedLiteral(s) => s.len(),
+            FormatPart::Locale(locale_code) => {
+                locale_code.currency.as_ref().map_or(0, |s| s.len())
+            }
+            FormatPart::Percent => 1,
+            _ => 0,
+        }
+    }).sum()
+}
+
 /// Build the final result string with prefix and suffix parts.
 fn build_result(
     analysis: &FormatAnalysis,
     formatted_number: &str,
     _opts: &FormatOptions,
 ) -> String {
-    let mut result = String::new();
+    // Pre-allocate exact capacity (no reallocation, no waste)
+    let capacity = count_part_chars(&analysis.prefix_parts)
+        + formatted_number.len()
+        + count_part_chars(&analysis.suffix_parts);
+    let mut result = String::with_capacity(capacity);
 
     // Add prefix parts
     for part in &analysis.prefix_parts {
