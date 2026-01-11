@@ -658,11 +658,12 @@ fn format_scientific(
 
     let exponent = if mantissa_integer_places > 1 {
         // For ##0 (3 places), we want mantissa to be in range [1, 1000)
-        // Adjust exponent to be a multiple of (places-1) to group digits
+        // Adjust exponent to be a multiple of group_size to group digits
         // For ##0: exponent should be multiple of 3, giving mantissa like 123.5E+6, not 1.235E+8
         let group_size = (mantissa_integer_places as i32).max(1);
-        // Round exponent down to nearest multiple of group_size
-        (base_exponent / group_size) * group_size
+        // Use floor division to handle negative exponents correctly
+        // For base_exponent = -1, group_size = 3: floor(-1/3) * 3 = -1 * 3 = -3
+        ((base_exponent as f64) / (group_size as f64)).floor() as i32 * group_size
     } else {
         base_exponent
     };
