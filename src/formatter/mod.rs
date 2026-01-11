@@ -206,6 +206,23 @@ pub fn fallback_format(value: f64) -> String {
         return "0".to_string();
     }
 
+    // Integer fast path: check if value is a whole integer
+    // This avoids expensive log10() and format!() operations for common integer values
+    // Safe integer range for f64 is < 2^53 (9007199254740992)
+    let int_val = value.trunc() as i64;
+    if (value - int_val as f64).abs() < f64::EPSILON && value.abs() >= 1.0 {
+        let abs_int = int_val.unsigned_abs();
+        // Excel's General format shows up to 11 digits before switching to scientific
+        if abs_int < 100_000_000_000 {
+            // 11 digits max
+            return if value < 0.0 {
+                format!("-{}", abs_int)
+            } else {
+                abs_int.to_string()
+            };
+        }
+    }
+
     let abs_value = value.abs();
 
     // Excel's General format uses scientific notation based on magnitude and precision:
