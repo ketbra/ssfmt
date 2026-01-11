@@ -649,7 +649,18 @@ impl SectionBuilder {
             // Look for a "/" literal that could be part of a fraction
             if let Some(slash_pos) = self.find_slash_position(i) {
                 // Check if there are digit placeholders or a fixed number after the slash
-                let denom_start = slash_pos + 1;
+                // Skip any spaces after the slash
+                let mut denom_start = slash_pos + 1;
+                while denom_start < self.parts.len() {
+                    if let FormatPart::Literal(s) = &self.parts[denom_start] {
+                        if s.chars().all(|c| c == ' ') {
+                            denom_start += 1;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
                 let denom_digits = self.collect_digit_placeholders(denom_start);
 
                 // Also check for fixed denominator (numeric literal)
@@ -685,7 +696,19 @@ impl SectionBuilder {
 
                 if !denom_digits.is_empty() || fixed_denom.is_some() {
                     // Found denominator, now look for numerator before slash
-                    let num_end = slash_pos;
+                    // Skip any spaces before the slash
+                    let mut num_search_pos = slash_pos;
+                    while num_search_pos > 0 {
+                        if let FormatPart::Literal(s) = &self.parts[num_search_pos - 1] {
+                            if s.chars().all(|c| c == ' ') {
+                                num_search_pos -= 1;
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+
+                    let num_end = num_search_pos;
                     if num_end > 0 {
                         let num_digits = self.collect_digit_placeholders_reverse(num_end - 1);
 
@@ -696,6 +719,36 @@ impl SectionBuilder {
                                 self.collect_integer_part(num_start - 1, &mut new_parts)
                             } else {
                                 Vec::new()
+                            };
+
+                            // Check for spaces before slash (between numerator and slash)
+                            let space_before_slash = if num_start > 0 && slash_pos > num_start {
+                                if let FormatPart::Literal(s) = &self.parts[slash_pos - 1] {
+                                    if s.chars().all(|c| c == ' ') {
+                                        s.clone()
+                                    } else {
+                                        String::new()
+                                    }
+                                } else {
+                                    String::new()
+                                }
+                            } else {
+                                String::new()
+                            };
+
+                            // Check for spaces after slash (between slash and denominator)
+                            let space_after_slash = if slash_pos + 1 < denom_start {
+                                if let FormatPart::Literal(s) = &self.parts[slash_pos + 1] {
+                                    if s.chars().all(|c| c == ' ') {
+                                        s.clone()
+                                    } else {
+                                        String::new()
+                                    }
+                                } else {
+                                    String::new()
+                                }
+                            } else {
+                                String::new()
                             };
 
                             // Create fraction part
@@ -709,6 +762,8 @@ impl SectionBuilder {
                                 integer_digits: int_digits,
                                 numerator_digits: num_digits,
                                 denominator,
+                                space_before_slash,
+                                space_after_slash,
                             };
                             new_parts.push(fraction);
 

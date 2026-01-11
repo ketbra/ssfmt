@@ -238,6 +238,10 @@ pub enum FormatPart {
         numerator_digits: Vec<DigitPlaceholder>,
         /// Denominator specification (fixed or up to N digits)
         denominator: FractionDenom,
+        /// Space before slash (for formats like "# ?? / ??")
+        space_before_slash: String,
+        /// Space after slash (for formats like "# ?? / ??")
+        space_after_slash: String,
     },
     /// Date/time component
     DatePart(DatePart),

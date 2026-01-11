@@ -52,15 +52,17 @@ pub fn format_fraction(
             integer_digits,
             numerator_digits,
             denominator,
+            space_before_slash,
+            space_after_slash,
         } = p
         {
-            Some((integer_digits, numerator_digits, denominator))
+            Some((integer_digits, numerator_digits, denominator, space_before_slash, space_after_slash))
         } else {
             None
         }
     });
 
-    let Some((integer_digits, numerator_digits, denominator)) = fraction_part else {
+    let Some((integer_digits, numerator_digits, denominator, space_before_slash, space_after_slash)) = fraction_part else {
         return Err(FormatError::TypeMismatch {
             expected: "fraction format",
             got: "no fraction part found",
@@ -75,12 +77,30 @@ pub fn format_fraction(
     // Determine if this is a mixed fraction or improper fraction
     let is_mixed = !integer_digits.is_empty();
 
+    // Calculate padding width (ri in SSF) - used for both numerator and denominator padding
+    // For mixed fractions: Math.min(Math.max(numerator_len, denominator_len), 7)
+    // For improper fractions: Math.min(denominator_len, 7)
+    let padding_width = match denominator {
+        FractionDenom::UpToDigits(denom_digits) => {
+            if is_mixed {
+                let numerator_len = numerator_digits.len() as u8;
+                numerator_len.max(*denom_digits).min(7)
+            } else {
+                (*denom_digits).min(7)
+            }
+        }
+        FractionDenom::Fixed(_) => {
+            // For fixed denominators, no padding width calculation needed
+            0
+        }
+    };
+
     // Find best fraction approximation
     let (mut num, denom) = if is_mixed {
         // Mixed fraction: approximate the fractional part only
         match denominator {
-            FractionDenom::UpToDigits(digits) => {
-                let max_denom = 10_u32.pow(*digits as u32) - 1;
+            FractionDenom::UpToDigits(_) => {
+                let max_denom = 10_u32.pow(padding_width as u32) - 1;
                 find_best_fraction(frac_part, max_denom)
             }
             FractionDenom::Fixed(d) => {
@@ -91,8 +111,8 @@ pub fn format_fraction(
     } else {
         // Improper fraction: approximate the entire value
         match denominator {
-            FractionDenom::UpToDigits(digits) => {
-                let max_denom = 10_u32.pow(*digits as u32) - 1;
+            FractionDenom::UpToDigits(_) => {
+                let max_denom = 10_u32.pow(padding_width as u32) - 1;
                 find_best_fraction(abs_value, max_denom)
             }
             FractionDenom::Fixed(d) => {
@@ -141,38 +161,59 @@ pub fn format_fraction(
     }
 
     // Format the fraction part
-    // For mixed fractions with no fractional part (num=0), use spaces instead of "0/1"
+    // For mixed fractions with no fractional part (num=0), use spaces instead of "0/X"
     if is_mixed && num == 0 {
-        // Add spaces instead of "0/X"
-        // Space for numerator
-        for _ in numerator_digits {
-            result.push(' ');
-        }
-        result.push(' '); // Space for the slash
-        // Space for denominator
-        let denom_width = match denominator {
-            FractionDenom::UpToDigits(d) => *d as usize,
-            FractionDenom::Fixed(_) => format!("{}", denom).len(),
+        // SSF: fill(" ", 2*ri+1 + r[2].length + r[3].length)
+        // This creates spaces for: numerator (ri) + slash (1) + denominator (ri) + spaces around slash
+        let total_spaces = if matches!(denominator, FractionDenom::Fixed(_)) {
+            // For fixed denominators, use numerator width + slash + denominator width + spaces
+            let denom_width = format!("{}", denom).len();
+            numerator_digits.len() + 1 + denom_width + space_before_slash.len() + space_after_slash.len()
+        } else {
+            2 * padding_width as usize + 1 + space_before_slash.len() + space_after_slash.len()
         };
-        for _ in 0..denom_width {
+        for _ in 0..total_spaces {
             result.push(' ');
         }
     } else {
-        // Format numerator with proper placeholder handling
-        let num_str = format_fraction_part(num, numerator_digits);
-        result.push_str(&num_str);
+        // Format numerator and denominator with SSF-style padding
+        // SSF uses pad_(numerator, ri) - left padding with spaces
+        // SSF uses rpad_(denominator, ri) - right padding with spaces
 
-        result.push('/');
-
-        // Format denominator with padding
+        let num_str = format!("{}", num);
         let denom_str = format!("{}", denom);
-        let denom_width = match denominator {
-            FractionDenom::UpToDigits(d) => *d as usize,
-            FractionDenom::Fixed(_) => denom_str.len(),
-        };
-        result.push_str(&denom_str);
-        for _ in 0..(denom_width.saturating_sub(denom_str.len())) {
-            result.push(' ');
+
+        if matches!(denominator, FractionDenom::UpToDigits(_)) {
+            // Left-pad numerator to padding_width
+            for _ in 0..(padding_width as usize).saturating_sub(num_str.len()) {
+                result.push(' ');
+            }
+            result.push_str(&num_str);
+
+            // Add spaces before slash
+            result.push_str(space_before_slash);
+
+            result.push('/');
+
+            // Add spaces after slash
+            result.push_str(space_after_slash);
+
+            // Right-pad denominator to padding_width
+            result.push_str(&denom_str);
+            for _ in 0..(padding_width as usize).saturating_sub(denom_str.len()) {
+                result.push(' ');
+            }
+        } else {
+            // Fixed denominator: use numerator placeholder width for padding
+            let num_width = numerator_digits.len();
+            for _ in 0..num_width.saturating_sub(num_str.len()) {
+                result.push(' ');
+            }
+            result.push_str(&num_str);
+            result.push_str(space_before_slash);
+            result.push('/');
+            result.push_str(space_after_slash);
+            result.push_str(&denom_str);
         }
     }
 
