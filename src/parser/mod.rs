@@ -241,6 +241,8 @@ impl<'a> Parser<'a> {
                     let count = self.count_consecutive(&Token::Year)?;
                     let part = if count >= 4 {
                         DatePart::Year4
+                    } else if count == 3 {
+                        DatePart::Year3
                     } else {
                         DatePart::Year2
                     };
@@ -521,7 +523,7 @@ impl<'a> Parser<'a> {
         if let Some(elapsed) = try_parse_elapsed(content) {
             builder.add_part(FormatPart::Elapsed(elapsed));
             // If this is elapsed hours, set seen_hour so that subsequent 'mm' is parsed as minutes
-            if matches!(elapsed, ElapsedPart::Hours) {
+            if matches!(elapsed, ElapsedPart::Hours | ElapsedPart::Hours2) {
                 self.seen_hour = true;
             }
             return Ok(());
@@ -958,9 +960,12 @@ fn try_parse_condition(content: &str) -> Option<Condition> {
 fn try_parse_elapsed(content: &str) -> Option<ElapsedPart> {
     let lower = content.to_lowercase();
     match lower.as_str() {
-        "h" | "hh" => Some(ElapsedPart::Hours),
-        "m" | "mm" => Some(ElapsedPart::Minutes),
-        "s" | "ss" => Some(ElapsedPart::Seconds),
+        "h" => Some(ElapsedPart::Hours),
+        "hh" => Some(ElapsedPart::Hours2),
+        "m" => Some(ElapsedPart::Minutes),
+        "mm" => Some(ElapsedPart::Minutes2),
+        "s" => Some(ElapsedPart::Seconds),
+        "ss" => Some(ElapsedPart::Seconds2),
         _ => None,
     }
 }
@@ -1072,16 +1077,16 @@ mod tests {
     #[test]
     fn test_try_parse_elapsed() {
         assert!(matches!(try_parse_elapsed("h"), Some(ElapsedPart::Hours)));
-        assert!(matches!(try_parse_elapsed("hh"), Some(ElapsedPart::Hours)));
+        assert!(matches!(try_parse_elapsed("hh"), Some(ElapsedPart::Hours2)));
         assert!(matches!(try_parse_elapsed("m"), Some(ElapsedPart::Minutes)));
         assert!(matches!(
             try_parse_elapsed("mm"),
-            Some(ElapsedPart::Minutes)
+            Some(ElapsedPart::Minutes2)
         ));
         assert!(matches!(try_parse_elapsed("s"), Some(ElapsedPart::Seconds)));
         assert!(matches!(
             try_parse_elapsed("ss"),
-            Some(ElapsedPart::Seconds)
+            Some(ElapsedPart::Seconds2)
         ));
     }
 

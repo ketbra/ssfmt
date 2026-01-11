@@ -77,12 +77,9 @@ pub fn format_date(
     };
 
     // Get weekday (1=Sunday...7=Saturday)
-    // For time-only values, use Sunday as default
-    let weekday = if value >= 1.0 {
-        serial_to_weekday(value, opts.date_system)
-    } else {
-        1 // Sunday
-    };
+    // Always calculate weekday based on serial value
+    // Even for value 0, Excel calculates it as Saturday (day before Jan 1, 1900)
+    let weekday = serial_to_weekday(value, opts.date_system);
 
     // Build the formatted string
     let mut result = String::new();
@@ -162,6 +159,7 @@ fn format_date_part(
     match part {
         // Year formatting
         DatePart::Year2 => format!("{:02}", year % 100),
+        DatePart::Year3 => format!("{:03}", year),
         DatePart::Year4 => format!("{:04}", year),
 
         // Buddhist calendar (Thai Buddhist Era)
@@ -306,26 +304,52 @@ fn format_ampm(style: AmPmStyle, hour: u32, locale: &Locale) -> String {
 
 /// Format elapsed time (total hours, minutes, or seconds).
 fn format_elapsed(part: ElapsedPart, serial_value: f64) -> String {
+    // Helper function to handle floating-point rounding errors
+    // If value is very close to an integer (within 1e-9), round to that integer
+    // Otherwise use floor for truncation
+    let smart_floor = |value: f64| -> i64 {
+        let floored = value.floor();
+        // Check if we're very close to the next integer (floating-point error)
+        if (value - floored - 1.0).abs() < 1e-9 {
+            (floored + 1.0) as i64
+        } else {
+            floored as i64
+        }
+    };
+
     match part {
         ElapsedPart::Hours => {
             // Total hours = serial_value * 24
-            // Truncate (don't round) to align with regular mm:ss components
-            // For example, 123456.789 days * 24 = 2962962.936 hours
-            // Should show as 2962962:56:10, not 2962963:56:10
-            let total_hours = (serial_value * 24.0).floor() as i64;
+            // Use smart floor to handle floating-point precision
+            let total_hours = smart_floor(serial_value * 24.0);
             format!("{}", total_hours)
+        }
+        ElapsedPart::Hours2 => {
+            // Total hours with zero-padding to 2 digits
+            let total_hours = smart_floor(serial_value * 24.0);
+            format!("{:02}", total_hours)
         }
         ElapsedPart::Minutes => {
             // Total minutes = serial_value * 24 * 60
-            // Truncate to align with regular ss components
-            let total_minutes = (serial_value * 24.0 * 60.0).floor() as i64;
+            // Use smart floor to handle floating-point precision
+            let total_minutes = smart_floor(serial_value * 24.0 * 60.0);
             format!("{}", total_minutes)
+        }
+        ElapsedPart::Minutes2 => {
+            // Total minutes with zero-padding to 2 digits
+            let total_minutes = smart_floor(serial_value * 24.0 * 60.0);
+            format!("{:02}", total_minutes)
         }
         ElapsedPart::Seconds => {
             // Total seconds = serial_value * 24 * 60 * 60
-            // Truncate to align with subsecond display (.0, .00, etc.)
-            let total_seconds = (serial_value * 24.0 * 60.0 * 60.0).floor() as i64;
+            // Use smart floor to handle floating-point precision
+            let total_seconds = smart_floor(serial_value * 24.0 * 60.0 * 60.0);
             format!("{}", total_seconds)
+        }
+        ElapsedPart::Seconds2 => {
+            // Total seconds with zero-padding to 2 digits
+            let total_seconds = smart_floor(serial_value * 24.0 * 60.0 * 60.0);
+            format!("{:02}", total_seconds)
         }
     }
 }
