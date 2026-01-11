@@ -303,6 +303,15 @@ pub fn format_number(
         }
     }
 
+    // Integer fast path: use integer-only arithmetic to avoid precision loss
+    // Based on SSF's separate code paths in bits/66_numint.js vs bits/63_numflt.js
+    // Safe integer range for f64 is < 2^53 (9007199254740992)
+    const MAX_SAFE_INTEGER: f64 = 9007199254740992.0; // 2^53
+    if value.fract() == 0.0 && value.abs() < MAX_SAFE_INTEGER {
+        // Value is an exact integer within safe range - use integer path
+        return format_number_as_integer(value as i64, section, opts);
+    }
+
     let analysis = analyze_format(section);
 
     // Apply percent multiplication
@@ -328,6 +337,69 @@ pub fn format_number(
     let result = build_result(&analysis, &formatted, opts);
 
     Ok(result)
+}
+
+/// Format an integer value using integer-only arithmetic (no precision loss).
+/// Based on SSF's bits/66_numint.js.
+/// This path is used for values that are exact integers within safe range (< 2^53).
+fn format_number_as_integer(
+    value: i64,
+    section: &Section,
+    opts: &FormatOptions,
+) -> Result<String, FormatError> {
+    let analysis = analyze_format(section);
+
+    // Work with absolute value, track sign separately
+    let mut adjusted_value = value.abs();
+
+    // Apply percent multiplication (integer arithmetic)
+    for _ in 0..analysis.percent_count {
+        adjusted_value = adjusted_value.saturating_mul(100);
+    }
+
+    // Apply thousands scaling (integer division)
+    for _ in 0..analysis.thousands_scale {
+        adjusted_value /= 1000;
+    }
+
+    // For integers, decimal places should be zero unless explicitly formatted
+    let decimal_places = analysis.decimal_places();
+
+    if decimal_places > 0 {
+        // Integer displayed with decimal places (e.g., "0.00" formatting integer 42 -> "42.00")
+        // Convert to string and pad with zeros
+        let integer_str = format_integer(
+            adjusted_value as u64,
+            &analysis.integer_placeholders,
+            analysis.has_thousands_separator,
+            &analysis.inline_literals,
+            opts,
+        );
+
+        // Add decimal point and zeros
+        let decimal_str = "0".repeat(decimal_places);
+        let formatted = format!(
+            "{}{}{}",
+            integer_str, opts.locale.decimal_separator, decimal_str
+        );
+
+        // Build the final result with prefix and suffix
+        let result = build_result(&analysis, &formatted, opts);
+        Ok(result)
+    } else {
+        // Pure integer formatting (no decimal places)
+        let formatted = format_integer(
+            adjusted_value as u64,
+            &analysis.integer_placeholders,
+            analysis.has_thousands_separator,
+            &analysis.inline_literals,
+            opts,
+        );
+
+        // Build the final result with prefix and suffix
+        let result = build_result(&analysis, &formatted, opts);
+        Ok(result)
+    }
 }
 
 /// Format a number according to the analysis.
