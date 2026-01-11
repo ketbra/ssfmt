@@ -37,16 +37,16 @@ This measures the time to parse a format string and format a single value. This 
 
 | Format Type | ssfmt (ns/op) | numfmt-rs (ns/op) | Winner |
 |-------------|---------------|-------------------|--------|
-| General (integer) | 381.6 | 239.1 | numfmt-rs 1.60x |
-| General (decimal) | 258.7 | 738.1 | **ssfmt 2.85x** |
-| Number with decimals | 577.1 | 847.6 | **ssfmt 1.47x** |
-| Percentage | 580.5 | 823.9 | **ssfmt 1.42x** |
-| Scientific notation | 404.3 | 863.5 | **ssfmt 2.14x** |
-| Fraction | 365.2 | 567.9 | **ssfmt 1.55x** |
-| Date format | 521.1 | 381.1 | numfmt-rs 1.37x |
-| Time format | 530.3 | 407.9 | numfmt-rs 1.30x |
-| Complex date/time | 811.5 | 536.8 | numfmt-rs 1.51x |
-| Elapsed time | 414.0 | 388.2 | numfmt-rs 1.07x |
+| General (integer) | 391.8 | 250.4 | numfmt-rs 1.56x |
+| General (decimal) | 256.1 | 673.5 | **ssfmt 2.63x** |
+| Number with decimals | 577.1 | 803.8 | **ssfmt 1.39x** |
+| Percentage | 541.7 | 763.3 | **ssfmt 1.41x** |
+| Scientific notation | 390.1 | 812.0 | **ssfmt 2.08x** |
+| Fraction | 359.5 | 571.3 | **ssfmt 1.59x** |
+| Date format | 392.6 | 377.1 | ~tied (numfmt 1.04x) |
+| Time format | 480.0 | 418.5 | numfmt-rs 1.15x |
+| Complex date/time | 689.1 | 537.0 | numfmt-rs 1.28x |
+| Elapsed time | 406.7 | 383.3 | numfmt-rs 1.06x |
 
 ### Scenario 2: Pre-Compiled AST (ssfmt) vs Internal Cache (numfmt-rs)
 
@@ -56,16 +56,20 @@ This is the typical spreadsheet use case where the same format is applied to tho
 
 | Format Type | ssfmt (ns/op) | numfmt-rs (ns/op) | Winner |
 |-------------|---------------|-------------------|--------|
-| General (integer) | 309.1 | 241.8 | numfmt-rs 1.28x |
-| Number with decimals | 422.1 | 785.8 | **ssfmt 1.86x** |
-| Date format | 371.9 | 383.7 | **ssfmt 1.03x** |
-| Time format | 290.4 | 368.8 | **ssfmt 1.27x** |
+| General (integer) | 320.4 | 245.1 | numfmt-rs 1.31x |
+| Number with decimals | 445.2 | 802.4 | **ssfmt 1.80x** |
+| Date format | 238.5 | 385.5 | **ssfmt 1.62x** |
+| Time format | 284.3 | 369.1 | **ssfmt 1.30x** |
 
 ### Analysis
 
-- **ssfmt is faster for number formatting** in both scenarios (1.5-2.8x one-shot, 1.9x cached)
-- **For date/time formatting**: numfmt-rs is faster one-shot (1.3-1.5x), but ssfmt is faster or equal when pre-compiled
-- **Pre-compilation matters**: ssfmt's explicit AST approach shows its advantage in the cached scenario, especially for dates where it goes from slower to faster
+- **ssfmt is faster for number formatting** in both scenarios (1.4-2.6x one-shot, 1.8x cached)
+- **For date/time formatting**: Nearly tied in one-shot scenario, ssfmt significantly faster when pre-compiled (1.3-1.6x)
+- **Pre-compilation matters**: ssfmt's explicit AST approach shows its advantage in the cached scenario
+
+### Performance Note
+
+ssfmt uses O(1) algorithms for date serial number conversion (Fliegel & Van Flandern, 1968), avoiding the O(years) iteration that would be required for modern dates. This provides consistent performance regardless of the date being formatted.
 
 ### Caching Strategies
 
