@@ -74,23 +74,29 @@ pub fn format_date(
     }
 
     // Get time components
-    let (mut hour, mut minute, mut second) = crate::date_serial::serial_to_time(adjusted_value);
-
-    // Calculate subsecond fractional part for pre-rounding
-    // SSF approach: apply pre-rounding based on smallest displayed time unit (bits/82_eval.js)
-    let fraction = adjusted_value.fract().abs();
-    let total_seconds = fraction * 86400.0;
-    let subseconds = total_seconds - total_seconds.floor();
+    // Only round seconds when there's no subsecond display in the format
+    let has_subseconds = section.metadata.max_subsecond_precision.is_some();
+    let (mut hour, mut minute, mut second) = crate::date_serial::serial_to_time_with_rounding(adjusted_value, !has_subseconds);
 
     // Apply pre-rounding based on smallest displayed time unit
     // This ensures proper rounding behavior (e.g., 12:34:59.9 displayed as "hh:mm" shows "12:35")
-    apply_time_prerounding(
-        &mut hour,
-        &mut minute,
-        &mut second,
-        subseconds,
-        section.metadata.smallest_time_unit,
-    );
+    // Only apply when we have subsecond display - otherwise, serial_to_time already rounded.
+    if has_subseconds {
+        let fraction = adjusted_value.fract().abs();
+        // Round to millisecond precision first (same as serial_to_time_impl) to handle
+        // floating point errors, then extract subseconds
+        let total_seconds = (fraction * 86400.0 * 1000.0).round() / 1000.0;
+        let subseconds = total_seconds - total_seconds.floor();
+
+        apply_time_prerounding(
+            &mut hour,
+            &mut minute,
+            &mut second,
+            subseconds,
+            section.metadata.smallest_time_unit,
+            section.metadata.max_subsecond_precision,
+        );
+    }
 
     // Get weekday (1=Sunday...7=Saturday)
     // Always calculate weekday based on serial value
@@ -327,6 +333,7 @@ fn apply_time_prerounding(
     second: &mut u32,
     subseconds: f64,
     smallest_unit: crate::ast::TimeUnit,
+    subsecond_precision: Option<u8>,
 ) {
     use crate::ast::TimeUnit;
 
@@ -388,7 +395,24 @@ fn apply_time_prerounding(
 
             *second = sec as u32;
         }
-        TimeUnit::Subseconds | TimeUnit::None => {
+        TimeUnit::Subseconds => {
+            // For subsecond display, check if the subseconds would round up to the next second
+            // based on the display precision.
+            // For n decimal places, threshold = 1 - 0.5 * 10^(-n)
+            // e.g., .0 (1 place): 0.95 rounds to 1.0
+            //       .00 (2 places): 0.995 rounds to 1.00
+            if let Some(precision) = subsecond_precision {
+                let threshold = 1.0 - 0.5 * 10_f64.powi(-(precision as i32));
+                if subseconds >= threshold {
+                    let mut sec = *second as i64 + 1;
+                    if sec >= 60 {
+                        sec %= 60;
+                    }
+                    *second = sec as u32;
+                }
+            }
+        }
+        TimeUnit::None => {
             // No rounding needed
         }
     }
