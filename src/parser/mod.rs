@@ -204,13 +204,11 @@ impl<'a> Parser<'a> {
                         builder.add_part(FormatPart::Scientific { upper, show_plus });
                     } else {
                         // Standalone 'e' or 'E' - could be era year (date format)
-                        // Count consecutive e/E tokens
-                        let mut count = 1;
+                        // Skip consecutive e/E tokens
                         while matches!(
                             self.current.token,
                             Token::ExponentLower | Token::ExponentUpper
                         ) {
-                            count += 1;
                             self.advance()?;
                         }
 
@@ -564,15 +562,14 @@ impl<'a> Parser<'a> {
         let mut remaining = &self.lexer.input[self.current.start..];
 
         // Skip past 'm' or 'M' characters (the month/minute tokens we're currently at)
-        remaining = remaining.trim_start_matches(|c| c == 'm' || c == 'M');
+        remaining = remaining.trim_start_matches(['m', 'M']);
         remaining = remaining.trim_start();
 
         // Check for time context patterns:
         // 1. ":s" or ":ss" - minutes:seconds with colon (e.g., "mm:ss")
         // 2. "s" or "ss" - minutes+seconds without colon (e.g., "mmss.0")
-        if remaining.starts_with(':') {
-            // Skip the colon and check if 's' or 'S' follows
-            let after_colon = &remaining[1..];
+        if let Some(after_colon) = remaining.strip_prefix(':') {
+            // Check if 's' or 'S' follows the colon
             if let Some(first_ch) = after_colon.chars().next() {
                 return first_ch == 's' || first_ch == 'S';
             }
@@ -977,7 +974,6 @@ impl SectionBuilder {
     /// Collect integer part before numerator (digits before a space typically)
     fn collect_integer_part(&self, end: usize, new_parts: &mut Vec<FormatPart>) -> Vec<DigitPlaceholder> {
         let mut int_digits = Vec::new();
-        let mut last_digit_pos = None;
 
         // Scan backwards from end to find digit placeholders
         let mut i = end as isize;
@@ -986,7 +982,6 @@ impl SectionBuilder {
         while i >= 0 {
             match &self.parts.get(i as usize) {
                 Some(FormatPart::Digit(d)) => {
-                    last_digit_pos = Some(i as usize);
                     int_digits.push(*d);
                 }
                 Some(FormatPart::Literal(s) | FormatPart::EscapedLiteral(s)) if s == " " => {

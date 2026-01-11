@@ -14,7 +14,7 @@ pub fn format_date(
 ) -> Result<String, FormatError> {
     // SSF returns empty string for out-of-range dates (< 0 or > 2958465)
     // This matches Excel's behavior - see bits/35_datecode.js line 2
-    if value < 0.0 || value > 2958465.0 {
+    if !(0.0..=2958465.0).contains(&value) {
         return Ok(String::new());
     }
 
@@ -349,7 +349,7 @@ fn apply_time_prerounding(
                 hr += 1;
             }
             if hr >= 24 {
-                hr = hr % 24; // Wrap around if we overflow into next day
+                hr %= 24; // Wrap around if we overflow into next day
             }
 
             *hour = hr as u32;
@@ -369,7 +369,7 @@ fn apply_time_prerounding(
                 min += 1;
             }
             if min >= 60 {
-                min = min % 60; // Wrap around if we overflow
+                min %= 60; // Wrap around if we overflow
             }
 
             *minute = min as u32;
@@ -383,7 +383,7 @@ fn apply_time_prerounding(
                 sec += 1;
             }
             if sec >= 60 {
-                sec = sec % 60; // Wrap around if we overflow
+                sec %= 60; // Wrap around if we overflow
             }
 
             *second = sec as u32;
@@ -433,11 +433,11 @@ fn format_elapsed(part: ElapsedPart, serial_value: f64) -> String {
                 seconds += 1;
             }
             if seconds >= 60 {
-                seconds = 0;
+                // seconds = 0; (not needed, variable unused after)
                 minutes += 1;
             }
             if minutes >= 60 {
-                minutes = 0;
+                // minutes = 0; (not needed, variable unused after)
                 hours += 1;
             }
             // Total elapsed hours: D*24 + H (all integer arithmetic after rounding)
@@ -454,7 +454,7 @@ fn format_elapsed(part: ElapsedPart, serial_value: f64) -> String {
                 seconds += 1;
             }
             if seconds >= 60 {
-                seconds = 0;
+                // seconds = 0; (not needed, variable unused after)
                 minutes += 1;
             }
             // Total elapsed minutes: (D*24+H)*60 + M (all integer arithmetic after rounding)
