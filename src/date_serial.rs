@@ -254,8 +254,10 @@ pub fn serial_to_weekday(serial: f64, system: DateSystem) -> u32 {
     match system {
         DateSystem::Date1900 => {
             // Day 1 (Jan 1, 1900) was a Sunday (day 1)
-            // But we need to account for the leap year bug
-            ((days - 1) % 7 + 1) as u32
+            // Day 0 (Dec 31, 1899) was a Saturday (day 7)
+            // Use proper modulo to handle negative numbers correctly
+            let weekday = ((days - 1) % 7 + 7) % 7 + 1;
+            weekday as u32
         }
         DateSystem::Date1904 => {
             // Day 0 (Jan 1, 1904) was a Friday

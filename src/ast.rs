@@ -112,6 +112,8 @@ impl DigitPlaceholder {
 pub enum DatePart {
     /// `yy` - Two-digit year
     Year2,
+    /// `yyy` - Three-digit year (minimum 3 digits, shows full year)
+    Year3,
     /// `yyyy` - Four-digit year
     Year4,
     /// `m` - Month as number without leading zero (1-12)
@@ -176,12 +178,18 @@ pub enum AmPmStyle {
 /// Elapsed time format part (for durations).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElapsedPart {
-    /// `[h]` - Total elapsed hours (can exceed 24)
+    /// `[h]` - Total elapsed hours without padding
     Hours,
-    /// `[m]` - Total elapsed minutes (can exceed 60)
+    /// `[hh]` - Total elapsed hours with zero-padding to 2 digits
+    Hours2,
+    /// `[m]` - Total elapsed minutes without padding
     Minutes,
-    /// `[s]` - Total elapsed seconds (can exceed 60)
+    /// `[mm]` - Total elapsed minutes with zero-padding to 2 digits
+    Minutes2,
+    /// `[s]` - Total elapsed seconds without padding
     Seconds,
+    /// `[ss]` - Total elapsed seconds with zero-padding to 2 digits
+    Seconds2,
 }
 
 /// Fraction denominator specification.
