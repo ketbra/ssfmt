@@ -2,42 +2,13 @@
 
 use crate::ast::{DigitPlaceholder, FormatPart, FractionDenom, Section};
 use crate::error::FormatError;
+use crate::formatter::number::format_simple_with_placeholders;
 use crate::options::FormatOptions;
 
 /// Format a fraction part (numerator or denominator) with digit placeholders.
+/// Uses the unified placeholder formatting helper from number.rs.
 fn format_fraction_part(value: u32, placeholders: &[DigitPlaceholder]) -> String {
-    if placeholders.is_empty() {
-        return value.to_string();
-    }
-
-    let value_str = value.to_string();
-    let value_digits: Vec<char> = value_str.chars().collect();
-
-    // If we have more digits than placeholders, show all digits
-    if value_digits.len() > placeholders.len() {
-        return value_str;
-    }
-
-    let mut result = String::new();
-
-    // Process from right to left
-    for (pos_from_right, _) in (0..placeholders.len()).enumerate() {
-        let digit_index = value_digits.len() as isize - 1 - pos_from_right as isize;
-        let placeholder_index = placeholders.len() - 1 - pos_from_right;
-        let placeholder = placeholders[placeholder_index];
-
-        if digit_index >= 0 {
-            // We have a digit from the value
-            result.insert(0, value_digits[digit_index as usize]);
-        } else {
-            // Use placeholder's empty character
-            if let Some(c) = placeholder.empty_char() {
-                result.insert(0, c);
-            }
-        }
-    }
-
-    result
+    format_simple_with_placeholders(value, placeholders)
 }
 
 /// Format a number as a fraction according to the format section.

@@ -4,6 +4,47 @@ use crate::ast::{DigitPlaceholder, FormatPart, Section};
 use crate::error::FormatError;
 use crate::options::FormatOptions;
 
+/// Format a simple integer value with digit placeholders (no separators or literals).
+/// Based on SSF's write_num helper in bits/59_numhelp.js.
+/// Maps digits to placeholders from right to left, using placeholder padding for missing digits.
+pub(crate) fn format_simple_with_placeholders(
+    value: u32,
+    placeholders: &[DigitPlaceholder],
+) -> String {
+    if placeholders.is_empty() {
+        return value.to_string();
+    }
+
+    let value_str = value.to_string();
+    let value_digits: Vec<char> = value_str.chars().collect();
+
+    // If we have more digits than placeholders, show all digits
+    if value_digits.len() > placeholders.len() {
+        return value_str;
+    }
+
+    let mut result = String::new();
+
+    // Process from right to left
+    for pos_from_right in 0..placeholders.len() {
+        let digit_index = value_digits.len() as isize - 1 - pos_from_right as isize;
+        let placeholder_index = placeholders.len() - 1 - pos_from_right;
+        let placeholder = placeholders[placeholder_index];
+
+        if digit_index >= 0 {
+            // We have a digit from the value
+            result.insert(0, value_digits[digit_index as usize]);
+        } else {
+            // Use placeholder's empty character for padding
+            if let Some(c) = placeholder.empty_char() {
+                result.insert(0, c);
+            }
+        }
+    }
+
+    result
+}
+
 /// Analysis of a format section's numeric structure.
 #[derive(Debug, Clone)]
 pub struct FormatAnalysis {
