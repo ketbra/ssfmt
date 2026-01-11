@@ -43,6 +43,7 @@ fn test_number_format_is_date_format() {
             FormatPart::Literal("-".into()),
             FormatPart::DatePart(DatePart::Month2),
         ],
+        metadata: ssfmt::ast::SectionMetadata::default(),
     };
     let format = NumberFormat::from_sections(vec![section]);
     assert!(format.is_date_format());
@@ -55,6 +56,7 @@ fn test_number_format_sections_limit() {
             condition: None,
             color: None,
             parts: vec![],
+            metadata: ssfmt::ast::SectionMetadata::default(),
         })
         .collect();
     // Should only keep first 4 sections
