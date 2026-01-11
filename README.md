@@ -27,6 +27,18 @@ let opts = FormatOptions::default();
 assert_eq!(fmt.format(46031.0, &opts), "2026-01-09");
 ```
 
+## Compatibility
+
+Achieves **99.9999% compatibility** with SheetJS SSF across 19.5+ million test cases.
+
+See [docs/TESTING.md](docs/TESTING.md) for detailed test coverage.
+
+## Documentation
+
+- [Architecture Guide](docs/ARCHITECTURE.md) - Design principles and key components
+- [Test Coverage](docs/TESTING.md) - Comprehensive testing documentation
+- [Implementation Plans](docs/plans/) - Original design and implementation notes
+
 ## License
 
 MIT OR Apache-2.0
