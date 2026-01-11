@@ -241,11 +241,7 @@ pub fn fallback_format(value: f64) -> String {
         if let Some(e_pos) = formatted.find('E') {
             let (mantissa, exponent) = formatted.split_at(e_pos);
             let trimmed_mantissa = mantissa.trim_end_matches('0');
-            let final_mantissa = if trimmed_mantissa.ends_with('.') {
-                &trimmed_mantissa[..trimmed_mantissa.len() - 1]
-            } else {
-                trimmed_mantissa
-            };
+            let final_mantissa = trimmed_mantissa.strip_suffix('.').unwrap_or(trimmed_mantissa);
 
             // Format exponent to match Excel: E+12, E-05, etc.
             let exp_str = &exponent[1..]; // Skip 'E'
