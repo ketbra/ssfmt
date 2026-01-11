@@ -79,9 +79,13 @@ fn test_ssf_times() {
             continue;
         }
 
+        // SSF's tests strip out #{255} markers (255 hash chars) before comparing
+        // These are placeholders for overflow values in the TSV file
+        let expected = test.expected.replace(&"#".repeat(255), "");
+
         match format_default(test.value, &test.format) {
             Ok(result) => {
-                if result == test.expected {
+                if result == expected {
                     passed += 1;
                 } else {
                     failed += 1;
@@ -91,7 +95,7 @@ fn test_ssf_times() {
                             i + 1,
                             test.value,
                             test.format,
-                            test.expected,
+                            expected,
                             result
                         );
                     }
@@ -105,7 +109,7 @@ fn test_ssf_times() {
                         i + 1,
                         test.value,
                         test.format,
-                        test.expected,
+                        expected,
                         e
                     );
                 }

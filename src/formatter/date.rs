@@ -12,6 +12,12 @@ pub fn format_date(
     section: &Section,
     opts: &FormatOptions,
 ) -> Result<String, FormatError> {
+    // SSF returns empty string for out-of-range dates (< 0 or > 2958465)
+    // This matches Excel's behavior - see bits/35_datecode.js line 2
+    if value < 0.0 || value > 2958465.0 {
+        return Ok(String::new());
+    }
+
     // Check if there's an AM/PM indicator in the format
     let has_ampm = section
         .parts
