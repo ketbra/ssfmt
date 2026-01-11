@@ -18,6 +18,15 @@ pub fn format_date(
         return Ok(String::new());
     }
 
+    // Check if this format uses Hijri calendar (B2 prefix)
+    // B2 triggers a special calendar mode where year is adjusted by -581
+    let is_hijri = section.parts.iter().any(|p| {
+        matches!(
+            p,
+            FormatPart::DatePart(DatePart::BuddhistYear4Alt | DatePart::BuddhistYear2Alt)
+        )
+    });
+
     // Check if there's an AM/PM indicator in the format
     let has_ampm = section
         .parts
@@ -51,7 +60,7 @@ pub fn format_date(
 
     // Get date components
     // For time-only values (serial < 1), use a default date since we only need time
-    let (year, month, day) = if value >= 1.0 {
+    let (mut year, mut month, mut day) = if value >= 1.0 {
         serial_to_date(value, opts.date_system)
             .ok_or(FormatError::DateOutOfRange { serial: value })?
     } else {
@@ -59,6 +68,28 @@ pub fn format_date(
         // Excel shows "1/0/00" for m/d/yy format with time-only values
         (1900, 1, 0)
     };
+
+    // Apply Hijri calendar conversion if B2 prefix is used
+    // SSF fix_hijri: subtracts 581 from year, handles special cases for day 0 and 60
+    // See /tmp/ssf/bits/45_hijri.js and bits/35_datecode.js lines 12-13
+    if is_hijri {
+        let days = value.floor() as i64;
+        if days == 60 {
+            // Special case for Excel's fake leap day
+            year = 1317;
+            month = 10;
+            day = 29;
+        } else if days == 0 {
+            // Special case for day 0
+            year = 1317;
+            month = 8;
+            day = 29;
+        } else {
+            // Regular conversion: subtract 581 from year
+            // Note: SSF has TODO to "properly adjust y/m/d" - this is incomplete
+            year -= 581;
+        }
+    }
 
     // Get time components
     // If there are subseconds, round to that precision to ensure proper carry-over
@@ -180,16 +211,16 @@ fn format_date_part(
             format!("{:04}", buddhist_year)
         }
         DatePart::BuddhistYear4Alt => {
-            // Alternative Buddhist calendar era: Gregorian year - 582
-            // Used with B2yyyy prefix
-            let buddhist_year = year - 582;
-            format!("{:04}", buddhist_year)
+            // Hijri calendar (B2yyyy prefix)
+            // Year has already been adjusted by fix_hijri conversion above
+            // Just format the year as-is
+            format!("{:04}", year)
         }
         DatePart::BuddhistYear2Alt => {
-            // Alternative Buddhist calendar era: Gregorian year - 582
-            // Used with B2yy prefix
-            let buddhist_year = year - 582;
-            format!("{:02}", buddhist_year % 100)
+            // Hijri calendar (B2yy prefix)
+            // Year has already been adjusted by fix_hijri conversion above
+            // Just format last 2 digits
+            format!("{:02}", year % 100)
         }
 
         // Month formatting

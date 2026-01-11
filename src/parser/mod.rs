@@ -715,10 +715,31 @@ impl SectionBuilder {
                         if !num_digits.is_empty() {
                             // Found numerator, now collect any integer part before that
                             let num_start = num_end - num_digits.len();
-                            let int_digits = if num_start > 0 {
+                            let mut int_digits = if num_start > 0 {
                                 self.collect_integer_part(num_start - 1, &mut new_parts)
                             } else {
                                 Vec::new()
+                            };
+
+                            // Check if this is a mixed fraction or improper fraction
+                            // Mixed fraction: has space between integer and numerator (e.g., "# ??/??")
+                            // Improper fraction: no space, all digits before slash are numerator (e.g., "#0#00??/??")
+                            let has_space_before_numerator = num_start > 0 && {
+                                if let Some(FormatPart::Literal(s) | FormatPart::EscapedLiteral(s)) = self.parts.get(num_start - 1) {
+                                    s == " "
+                                } else {
+                                    false
+                                }
+                            };
+
+                            // For improper fractions, combine int_digits and num_digits into numerator
+                            let (final_int_digits, final_num_digits) = if !has_space_before_numerator && !int_digits.is_empty() {
+                                // Improper fraction: ALL digits before slash are numerator digits
+                                int_digits.extend(num_digits);
+                                (Vec::new(), int_digits)
+                            } else {
+                                // Mixed fraction: keep them separate
+                                (int_digits, num_digits)
                             };
 
                             // Check for spaces before slash (between numerator and slash)
@@ -759,8 +780,8 @@ impl SectionBuilder {
                             };
 
                             let fraction = FormatPart::Fraction {
-                                integer_digits: int_digits,
-                                numerator_digits: num_digits,
+                                integer_digits: final_int_digits,
+                                numerator_digits: final_num_digits,
                                 denominator,
                                 space_before_slash,
                                 space_after_slash,

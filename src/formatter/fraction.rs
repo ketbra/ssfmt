@@ -139,13 +139,14 @@ pub fn format_fraction(
 
     // Format integer part (mixed fractions only)
     if is_mixed {
-        if integer_part > 0 {
-            // Non-zero integer: show the number
-            result.push_str(&format!("{}", integer_part));
-        } else if num == 0 {
-            // Entire value rounds to zero: show '0' for integer
-            // Excel shows "0    " not "     " for very small values
-            result.push('0');
+        if integer_part > 0 || num == 0 {
+            // Format integer with digit placeholders
+            let int_str = if !integer_digits.is_empty() {
+                format_fraction_part(integer_part as u32, integer_digits)
+            } else {
+                format!("{}", integer_part)
+            };
+            result.push_str(&int_str);
         } else if !integer_digits.is_empty() {
             // Zero integer with non-zero fraction: show placeholders
             for placeholder in integer_digits {
@@ -176,43 +177,36 @@ pub fn format_fraction(
             result.push(' ');
         }
     } else {
-        // Format numerator and denominator with SSF-style padding
-        // SSF uses pad_(numerator, ri) - left padding with spaces
-        // SSF uses rpad_(denominator, ri) - right padding with spaces
-
+        // Format numerator and denominator
         let num_str = format!("{}", num);
         let denom_str = format!("{}", denom);
 
-        if matches!(denominator, FractionDenom::UpToDigits(_)) {
-            // Left-pad numerator to padding_width
-            for _ in 0..(padding_width as usize).saturating_sub(num_str.len()) {
-                result.push(' ');
-            }
+        // Check if this is a mixed or improper fraction
+        if !integer_digits.is_empty() {
+            // This shouldn't happen (mixed fractions handled above), but just in case
             result.push_str(&num_str);
+        } else {
+            // Improper fraction: use numerator_digits placeholders
+            // SSF uses write_num("n", r[1], ff[1]) - see bits/63_numflt.js line 47
+            let formatted_num = format_fraction_part(num, numerator_digits);
+            result.push_str(&formatted_num);
+        }
 
-            // Add spaces before slash
-            result.push_str(space_before_slash);
+        // Add spaces before slash
+        result.push_str(space_before_slash);
 
-            result.push('/');
+        result.push('/');
 
-            // Add spaces after slash
-            result.push_str(space_after_slash);
+        // Add spaces after slash
+        result.push_str(space_after_slash);
 
-            // Right-pad denominator to padding_width
+        // Right-pad denominator to padding_width (for variable denominators)
+        if matches!(denominator, FractionDenom::UpToDigits(_)) {
             result.push_str(&denom_str);
             for _ in 0..(padding_width as usize).saturating_sub(denom_str.len()) {
                 result.push(' ');
             }
         } else {
-            // Fixed denominator: use numerator placeholder width for padding
-            let num_width = numerator_digits.len();
-            for _ in 0..num_width.saturating_sub(num_str.len()) {
-                result.push(' ');
-            }
-            result.push_str(&num_str);
-            result.push_str(space_before_slash);
-            result.push('/');
-            result.push_str(space_after_slash);
             result.push_str(&denom_str);
         }
     }
