@@ -11,25 +11,14 @@
 //! Time is stored as the fractional part of the serial number:
 //! - 0.5 = 12:00:00 (noon)
 //! - 0.75 = 18:00:00 (6 PM)
+//!
+//! # Performance
+//!
+//! This module uses O(1) algorithms for date conversion based on Julian Day
+//! Number formulas (Fliegel & Van Flandern, 1968) instead of iterating through
+//! years/months. This provides consistent performance regardless of the date.
 
 use crate::options::DateSystem;
-
-/// Days in each month for non-leap years
-const DAYS_IN_MONTH: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-
-/// Returns true if the given year is a leap year
-fn is_leap_year(year: i32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
-}
-
-/// Returns the number of days in a given month/year
-fn days_in_month(year: i32, month: u32) -> u32 {
-    if month == 2 && is_leap_year(year) {
-        29
-    } else {
-        DAYS_IN_MONTH[(month - 1) as usize]
-    }
-}
 
 /// Convert an Excel serial number to a date (year, month, day).
 ///
@@ -59,70 +48,63 @@ pub fn serial_to_date(serial: f64, system: DateSystem) -> Option<(i32, u32, u32)
     }
 }
 
-/// Convert serial number to date using the 1900 system
+/// Convert serial number to date using the 1900 system.
+///
+/// Uses an O(1) algorithm based on Julian Day Number conversion
+/// (Fliegel & Van Flandern, 1968) instead of iterating through years.
 fn serial_to_date_1900(days: i64) -> Option<(i32, u32, u32)> {
     // Handle Excel's leap year bug: day 60 = Feb 29, 1900 (doesn't exist)
     if days == 60 {
         return Some((1900, 2, 29));
     }
 
-    // For days > 60, subtract 1 to account for the phantom Feb 29, 1900
-    let adjusted_days = if days > 60 { days - 1 } else { days };
-
-    // Day 1 = Jan 1, 1900
-    // Convert to days since day 0 (Dec 31, 1899)
-    let mut remaining = adjusted_days;
-
-    let mut year = 1900i32;
-    let mut month = 1u32;
-
-    // Find the year
-    loop {
-        let days_in_year = if is_leap_year(year) { 366 } else { 365 };
-        if remaining <= days_in_year as i64 {
-            break;
+    // Handle early 1900 dates specially (days 1-59)
+    // These are before the leap year bug kicks in
+    if days < 60 {
+        // Day 1 = Jan 1, 1900
+        if days < 32 {
+            return Some((1900, 1, days as u32));
+        } else {
+            return Some((1900, 2, (days - 31) as u32));
         }
-        remaining -= days_in_year as i64;
-        year += 1;
     }
 
-    // Find the month
-    while remaining > days_in_month(year, month) as i64 {
-        remaining -= days_in_month(year, month) as i64;
-        month += 1;
-    }
+    // For days > 60, use the O(1) Julian Day Number algorithm
+    // This converts Excel serial to Gregorian date.
+    //
+    // The algorithm is based on Fliegel & Van Flandern (1968).
+    // We need to account for the Excel leap year bug: day 60 is the phantom
+    // Feb 29, 1900, so days > 60 are shifted by 1 compared to the real calendar.
+    //
+    // The constant 2_415_019 = JDN for Dec 31, 1899 (Excel day 0)
+    // By not subtracting 1 for the leap year bug, we effectively treat
+    // the Excel serial as if Excel's calendar were correct (which it isn't,
+    // but matches what Excel displays).
+    let ord = days;
 
-    let day = remaining as u32;
+    // Convert Excel serial to Julian Day Number, then to Gregorian
+    let mut l = ord + 68_569 + 2_415_019;
+    let n = (4 * l) / 146_097;
+    l -= (146_097 * n + 3) / 4;
+    let i = (4_000 * (l + 1)) / 1_461_001;
+    l = l - ((1_461 * i) / 4) + 31;
+    let j = (80 * l) / 2_447;
+    let n_day = l - ((2_447 * j) / 80);
+    l = j / 11;
+    let n_month = j + 2 - (12 * l);
+    let n_year = 100 * (n - 49) + i + l;
 
-    Some((year, month, day))
+    Some((n_year as i32, n_month as u32, n_day as u32))
 }
 
-/// Convert serial number to date using the 1904 system
+/// Convert serial number to date using the 1904 system.
+///
+/// Uses O(1) algorithm by converting to 1900 system equivalent.
 fn serial_to_date_1904(days: i64) -> Option<(i32, u32, u32)> {
-    // In the 1904 system, day 1 = January 2, 1904
-    // (day 0 = January 1, 1904)
-    let mut year = 1904i32;
-    let mut month = 1u32;
-
-    // Start from Jan 1, 1904 (day 0)
-    // Day 1 = Jan 2, 1904
-    let mut day = 1u32 + days as u32;
-
-    // Normalize the date
-    loop {
-        let dim = days_in_month(year, month);
-        if day <= dim {
-            break;
-        }
-        day -= dim;
-        month += 1;
-        if month > 12 {
-            month = 1;
-            year += 1;
-        }
-    }
-
-    Some((year, month, day))
+    // The 1904 system is offset from 1900 by 1462 days
+    // Day 1 in 1904 system = Jan 2, 1904 = Day 1463 in 1900 system
+    // We add 1462 to convert to 1900 system, then use the O(1) algorithm
+    serial_to_date_1900(days + 1462)
 }
 
 /// Extract the time components (hours, minutes, seconds) from a serial number.
@@ -172,6 +154,8 @@ fn serial_to_time_impl(serial: f64, round_seconds: bool) -> (u32, u32, u32) {
 
 /// Convert a date (year, month, day) to an Excel serial number.
 ///
+/// Uses an O(1) algorithm based on Julian Day Number conversion.
+///
 /// # Arguments
 /// * `year` - The year (e.g., 2026)
 /// * `month` - The month (1-12)
@@ -187,27 +171,33 @@ pub fn date_to_serial(year: i32, month: u32, day: u32, system: DateSystem) -> f6
     }
 }
 
-/// Convert date to serial using the 1900 system
+/// Convert date to serial using the 1900 system.
+///
+/// Uses an O(1) algorithm based on the civil date formula.
 fn date_to_serial_1900(year: i32, month: u32, day: u32) -> f64 {
     // Special case for the phantom Feb 29, 1900
     if year == 1900 && month == 2 && day == 29 {
         return 60.0;
     }
 
-    let mut serial: i64 = 0;
+    // Use O(1) algorithm to convert Gregorian to days since epoch
+    // Based on Howard Hinnant's date algorithms
+    // http://howardhinnant.github.io/date_algorithms.html
+    let y = year - (month <= 2) as i32;
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u32; // year of era [0, 399]
+    let m = month as i32;
+    let d = day as i32;
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1; // day of year [0, 365]
+    let doe = yoe as i32 * 365 + yoe as i32 / 4 - yoe as i32 / 100 + doy; // day of era [0, 146096]
 
-    // Add days for complete years from 1900
-    for y in 1900..year {
-        serial += if is_leap_year(y) { 366 } else { 365 };
-    }
+    // Days since epoch (March 1, 0000 in proleptic Gregorian)
+    let days_since_epoch = era as i64 * 146_097 + doe as i64 - 719_468;
 
-    // Add days for complete months in the current year
-    for m in 1..month {
-        serial += days_in_month(year, m) as i64;
-    }
-
-    // Add the day of month
-    serial += day as i64;
+    // Convert to Excel serial (Excel day 1 = Jan 1, 1900)
+    // Jan 1, 1900 = days_since_epoch of -25567
+    // So Excel serial = days_since_epoch + 25568
+    let mut serial = days_since_epoch + 25568;
 
     // Add 1 for the leap year bug (for dates after Feb 28, 1900)
     if serial >= 60 {
@@ -217,26 +207,13 @@ fn date_to_serial_1900(year: i32, month: u32, day: u32) -> f64 {
     serial as f64
 }
 
-/// Convert date to serial using the 1904 system
+/// Convert date to serial using the 1904 system.
+///
+/// Uses O(1) algorithm by calculating the 1900 equivalent and adjusting.
 fn date_to_serial_1904(year: i32, month: u32, day: u32) -> f64 {
-    // Day 0 = January 1, 1904
-    // Day 1 = January 2, 1904
-    let mut serial: i64 = 0;
-
-    // Add days for complete years from 1904
-    for y in 1904..year {
-        serial += if is_leap_year(y) { 366 } else { 365 };
-    }
-
-    // Add days for complete months in the current year
-    for m in 1..month {
-        serial += days_in_month(year, m) as i64;
-    }
-
-    // Add the day of month minus 1 (since day 0 = Jan 1)
-    serial += (day - 1) as i64;
-
-    serial as f64
+    // Get the 1900 system serial and subtract the offset
+    // Day 1 in 1904 system = Jan 2, 1904 = Day 1463 in 1900 system
+    date_to_serial_1900(year, month, day) - 1462.0
 }
 
 /// Get the day of the week from a serial number.
@@ -271,22 +248,6 @@ pub fn serial_to_weekday(serial: f64, system: DateSystem) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_is_leap_year() {
-        assert!(!is_leap_year(1900)); // Not a leap year (divisible by 100 but not 400)
-        assert!(is_leap_year(2000)); // Leap year (divisible by 400)
-        assert!(is_leap_year(2024)); // Leap year (divisible by 4)
-        assert!(!is_leap_year(2023)); // Not a leap year
-    }
-
-    #[test]
-    fn test_days_in_month() {
-        assert_eq!(days_in_month(2024, 2), 29); // Leap year
-        assert_eq!(days_in_month(2023, 2), 28); // Non-leap year
-        assert_eq!(days_in_month(2024, 1), 31);
-        assert_eq!(days_in_month(2024, 4), 30);
-    }
 
     #[test]
     fn test_serial_to_date_1900_early() {
@@ -346,11 +307,66 @@ mod tests {
             assert_eq!(
                 (y, m, d),
                 (y2, m2, d2),
-                "Roundtrip failed for {}-{}-{}",
+                "Roundtrip failed for {}-{}-{} (serial={})",
                 y,
                 m,
-                d
+                d,
+                serial
             );
         }
+    }
+
+    #[test]
+    fn test_serial_to_date_modern_dates() {
+        // Test some modern dates to verify the O(1) algorithm
+        // These values are verified against the SSF test suite which passes 100%
+        // Excel serial 45000 = March 15, 2023 (verified via SSF tests)
+        assert_eq!(
+            serial_to_date(45000.0, DateSystem::Date1900),
+            Some((2023, 3, 15))
+        );
+        // Excel serial 44197 = January 1, 2021
+        assert_eq!(
+            serial_to_date(44197.0, DateSystem::Date1900),
+            Some((2021, 1, 1))
+        );
+        // Excel serial 43831 = January 1, 2020
+        assert_eq!(
+            serial_to_date(43831.0, DateSystem::Date1900),
+            Some((2020, 1, 1))
+        );
+    }
+
+    #[test]
+    fn test_roundtrip_1904() {
+        // Test roundtrip for 1904 system
+        for &(y, m, d) in &[
+            (1904, 1, 2), // Day 1
+            (1904, 2, 29), // Leap year
+            (2024, 12, 31),
+        ] {
+            let serial = date_to_serial(y, m, d, DateSystem::Date1904);
+            let (y2, m2, d2) = serial_to_date(serial, DateSystem::Date1904).unwrap();
+            assert_eq!(
+                (y, m, d),
+                (y2, m2, d2),
+                "Roundtrip failed for {}-{}-{} (1904 system, serial={})",
+                y,
+                m,
+                d,
+                serial
+            );
+        }
+    }
+
+    #[test]
+    fn test_date_to_serial_known_values() {
+        // Test known date-to-serial conversions
+        assert_eq!(date_to_serial(1900, 1, 1, DateSystem::Date1900), 1.0);
+        assert_eq!(date_to_serial(1900, 2, 28, DateSystem::Date1900), 59.0);
+        assert_eq!(date_to_serial(1900, 2, 29, DateSystem::Date1900), 60.0); // Phantom leap day
+        assert_eq!(date_to_serial(1900, 3, 1, DateSystem::Date1900), 61.0);
+        assert_eq!(date_to_serial(2020, 1, 1, DateSystem::Date1900), 43831.0);
+        assert_eq!(date_to_serial(2021, 1, 1, DateSystem::Date1900), 44197.0);
     }
 }
