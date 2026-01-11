@@ -18,36 +18,19 @@ pub fn format_date(
         return Ok(String::new());
     }
 
-    // Check if this format uses Hijri calendar (B2 prefix)
-    // B2 triggers a special calendar mode where year is adjusted by -581
-    let is_hijri = section.parts.iter().any(|p| {
-        matches!(
-            p,
-            FormatPart::DatePart(DatePart::BuddhistYear4Alt | DatePart::BuddhistYear2Alt)
-        )
-    });
+    // Use pre-computed metadata instead of scanning parts
+    // Metadata is computed once during parsing for better performance
+    let is_hijri = section.metadata.is_hijri;
+    let has_ampm = section.metadata.has_ampm;
+    let max_subsecond_precision = section.metadata.max_subsecond_precision;
 
-    // Check if there's an AM/PM indicator in the format
-    let has_ampm = section
+    // Check if there are multiple SubSecond parts (still need to scan for this specific case)
+    let has_multiple_subseconds = section
         .parts
         .iter()
-        .any(|p| matches!(p, FormatPart::AmPm(_)));
-
-    // Check if there are SubSecond parts and find the maximum precision
-    let subsecond_places: Vec<u8> = section
-        .parts
-        .iter()
-        .filter_map(|p| {
-            if let FormatPart::DatePart(DatePart::SubSecond(places)) = p {
-                Some(*places)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let has_multiple_subseconds = subsecond_places.len() > 1;
-    let max_subsecond_precision = subsecond_places.iter().max().copied();
+        .filter(|p| matches!(p, FormatPart::DatePart(DatePart::SubSecond(_))))
+        .count()
+        > 1;
 
     // Round the serial value if it's very close to an integer
     // This handles floating point precision errors like 2.9999999999999996 -> 3.0

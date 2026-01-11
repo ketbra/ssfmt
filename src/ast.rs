@@ -284,6 +284,67 @@ impl FormatPart {
     }
 }
 
+/// Smallest time unit displayed in a format (used for pre-rounding).
+/// Based on SSF's `bt` variable in bits/82_eval.js
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TimeUnit {
+    /// No time components in format
+    None,
+    /// Hours is the smallest unit (round to nearest minute)
+    Hours,
+    /// Minutes is the smallest unit (round to nearest second)
+    Minutes,
+    /// Seconds is the smallest unit (round to nearest subsecond)
+    Seconds,
+    /// Subseconds displayed (no rounding needed)
+    Subseconds,
+}
+
+/// Type of format for optimization and dispatch
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FormatType {
+    /// General number format or mixed
+    General,
+    /// Date/time format
+    DateTime,
+    /// Pure number format
+    Number,
+    /// Fraction format
+    Fraction,
+    /// Text format
+    Text,
+}
+
+/// Pre-computed metadata about a section to avoid repeated scanning
+#[derive(Debug, Clone, PartialEq)]
+pub struct SectionMetadata {
+    /// True if format contains AM/PM indicator
+    pub has_ampm: bool,
+    /// True if format uses Hijri calendar (B2 prefix)
+    pub is_hijri: bool,
+    /// Maximum subsecond precision (e.g., 3 for .000)
+    pub max_subsecond_precision: Option<u8>,
+    /// True if format contains elapsed time components ([h], [m], [s])
+    pub has_elapsed_time: bool,
+    /// Smallest time unit displayed (for pre-rounding)
+    pub smallest_time_unit: TimeUnit,
+    /// Primary format type
+    pub format_type: FormatType,
+}
+
+impl Default for SectionMetadata {
+    fn default() -> Self {
+        Self {
+            has_ampm: false,
+            is_hijri: false,
+            max_subsecond_precision: None,
+            has_elapsed_time: false,
+            smallest_time_unit: TimeUnit::None,
+            format_type: FormatType::General,
+        }
+    }
+}
+
 /// A single section of a format code.
 ///
 /// Format codes can have up to 4 sections:
@@ -299,6 +360,8 @@ pub struct Section {
     pub color: Option<Color>,
     /// The format parts that make up this section
     pub parts: Vec<FormatPart>,
+    /// Pre-computed metadata to avoid repeated scanning
+    pub metadata: SectionMetadata,
 }
 
 impl Section {

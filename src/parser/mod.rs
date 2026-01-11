@@ -43,6 +43,7 @@ pub fn parse(format_code: &str) -> Result<NumberFormat, ParseError> {
             condition: None,
             color,
             parts: Vec::new(),
+            metadata: crate::ast::SectionMetadata::default(),
         };
         return Ok(NumberFormat::from_sections(vec![general_section]));
     }
@@ -632,10 +633,91 @@ impl SectionBuilder {
         // Post-process to detect subsecond patterns in date formats
         self.detect_subseconds();
 
+        // Compute metadata by scanning the parts once
+        let metadata = self.compute_metadata();
+
         Section {
             condition: self.condition,
             color: self.color,
             parts: self.parts,
+            metadata,
+        }
+    }
+
+    /// Compute section metadata by scanning parts once
+    /// Based on SSF's eval_fmt in bits/82_eval.js
+    fn compute_metadata(&self) -> crate::ast::SectionMetadata {
+        use crate::ast::*;
+
+        let mut has_ampm = false;
+        let mut is_hijri = false;
+        let mut max_subsecond_precision = None;
+        let mut has_elapsed_time = false;
+        let mut smallest_time_unit = TimeUnit::None;
+        let mut format_type = FormatType::General;
+
+        // Scan parts to gather metadata
+        for part in &self.parts {
+            match part {
+                FormatPart::AmPm(_) => {
+                    has_ampm = true;
+                }
+                FormatPart::DatePart(DatePart::BuddhistYear4Alt | DatePart::BuddhistYear2Alt) => {
+                    is_hijri = true;
+                }
+                FormatPart::DatePart(DatePart::SubSecond(precision)) => {
+                    max_subsecond_precision = Some(max_subsecond_precision.unwrap_or(0).max(*precision));
+                    if smallest_time_unit < TimeUnit::Subseconds {
+                        smallest_time_unit = TimeUnit::Subseconds;
+                    }
+                }
+                FormatPart::DatePart(DatePart::Second | DatePart::Second2) => {
+                    if smallest_time_unit < TimeUnit::Seconds {
+                        smallest_time_unit = TimeUnit::Seconds;
+                    }
+                }
+                FormatPart::DatePart(DatePart::Minute | DatePart::Minute2) => {
+                    if smallest_time_unit < TimeUnit::Minutes {
+                        smallest_time_unit = TimeUnit::Minutes;
+                    }
+                }
+                FormatPart::DatePart(DatePart::Hour | DatePart::Hour2) => {
+                    if smallest_time_unit < TimeUnit::Hours {
+                        smallest_time_unit = TimeUnit::Hours;
+                    }
+                }
+                FormatPart::Elapsed(_) => {
+                    has_elapsed_time = true;
+                }
+                FormatPart::Fraction { .. } => {
+                    format_type = FormatType::Fraction;
+                }
+                FormatPart::TextPlaceholder => {
+                    format_type = FormatType::Text;
+                }
+                _ => {}
+            }
+        }
+
+        // Determine format type if not already set
+        if format_type == FormatType::General {
+            let has_date = self.parts.iter().any(|p| matches!(p, FormatPart::DatePart(_)));
+            let has_number = self.parts.iter().any(|p| matches!(p, FormatPart::Digit(_) | FormatPart::DecimalPoint));
+
+            if has_date || has_ampm || has_elapsed_time {
+                format_type = FormatType::DateTime;
+            } else if has_number {
+                format_type = FormatType::Number;
+            }
+        }
+
+        SectionMetadata {
+            has_ampm,
+            is_hijri,
+            max_subsecond_precision,
+            has_elapsed_time,
+            smallest_time_unit,
+            format_type,
         }
     }
 

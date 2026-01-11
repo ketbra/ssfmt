@@ -322,6 +322,7 @@ mod tests {
             condition: None,
             color: None,
             parts,
+            metadata: crate::ast::SectionMetadata::default(),
         }
     }
 
@@ -381,6 +382,7 @@ mod tests {
                 condition: Some(Condition::GreaterThan(100.0)),
                 color: None,
                 parts: vec![FormatPart::Literal("BIG".to_string())],
+                metadata: crate::ast::SectionMetadata::default(),
             },
             make_section(vec![FormatPart::Digit(DigitPlaceholder::Zero)]),
         ]);

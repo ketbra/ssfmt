@@ -228,35 +228,27 @@ pub fn format_number(
         return format_scientific(value, section, upper, show_plus, opts);
     }
 
-    // Check if this is a fraction format
-    let has_fraction = section
-        .parts
-        .iter()
-        .any(|p| matches!(p, FormatPart::Fraction { .. }));
+    // Use pre-computed format type from metadata for better performance
+    use crate::ast::FormatType;
 
-    if has_fraction {
+    // Check if this is a fraction format
+    if section.metadata.format_type == FormatType::Fraction {
         return crate::formatter::fraction::format_fraction(value, section, opts);
     }
 
-    // Check if section has any numeric placeholders
-    let has_numeric_parts = section
-        .parts
-        .iter()
-        .any(|p| matches!(p, FormatPart::Digit(_) | FormatPart::DecimalPoint));
-
-    // Check if section has a text placeholder
-    let has_text_placeholder = section
-        .parts
-        .iter()
-        .any(|p| matches!(p, FormatPart::TextPlaceholder));
-
-    // If we have a text placeholder and we're formatting a number,
-    // use General format (fallback formatting)
-    if has_text_placeholder && !has_numeric_parts {
+    // Check if this is a text-only format
+    if section.metadata.format_type == FormatType::Text {
         return Ok(crate::formatter::fallback_format(value));
     }
 
-    // If no numeric parts and no text placeholder, check if GeneralNumber is present
+    // Check if section has any numeric placeholders
+    let has_numeric_parts = section.metadata.format_type == FormatType::Number
+        || section
+            .parts
+            .iter()
+            .any(|p| matches!(p, FormatPart::Digit(_) | FormatPart::DecimalPoint));
+
+    // If no numeric parts, check if GeneralNumber is present
     if !has_numeric_parts {
         let has_general_number = section
             .parts
@@ -725,6 +717,7 @@ mod tests {
             condition: None,
             color: None,
             parts,
+            metadata: crate::ast::SectionMetadata::default(),
         }
     }
 
