@@ -4,6 +4,8 @@
 //! separators and comma divisors (,, = millions, ,,, = billions, etc.)
 
 use ssfmt::format_default;
+use flate2::read::GzDecoder;
+use std::io::Read;
 
 #[derive(Debug)]
 struct CommaTestCase {
@@ -13,7 +15,10 @@ struct CommaTestCase {
 }
 
 fn load_test_cases() -> Vec<CommaTestCase> {
-    let tsv_data = include_str!("fixtures/comma.tsv");
+    let compressed = include_bytes!("fixtures/comma.tsv.gz");
+    let mut decoder = GzDecoder::new(&compressed[..]);
+    let mut tsv_data = String::new();
+    decoder.read_to_string(&mut tsv_data).unwrap();
     let lines: Vec<&str> = tsv_data.lines().collect();
 
     if lines.is_empty() {

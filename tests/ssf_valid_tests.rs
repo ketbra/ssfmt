@@ -5,9 +5,14 @@
 //! doesn't fail.
 
 use ssfmt::format_default;
+use flate2::read::GzDecoder;
+use std::io::Read;
 
 fn load_format_strings() -> Vec<String> {
-    let tsv_data = include_str!("fixtures/valid.tsv");
+    let compressed = include_bytes!("fixtures/valid.tsv.gz");
+    let mut decoder = GzDecoder::new(&compressed[..]);
+    let mut tsv_data = String::new();
+    decoder.read_to_string(&mut tsv_data).unwrap();
     tsv_data
         .lines()
         .filter(|line| !line.trim().is_empty())
