@@ -1,7 +1,7 @@
 //! Date and time formatting
 
 use crate::ast::{AmPmStyle, DatePart, ElapsedPart, FormatPart, Section};
-use crate::date_serial::{serial_to_date, serial_to_time, serial_to_weekday};
+use crate::date_serial::{serial_to_date, serial_to_weekday};
 use crate::error::FormatError;
 use crate::locale::Locale;
 use crate::options::FormatOptions;
@@ -22,7 +22,6 @@ pub fn format_date(
     // Metadata is computed once during parsing for better performance
     let is_hijri = section.metadata.is_hijri;
     let has_ampm = section.metadata.has_ampm;
-    let max_subsecond_precision = section.metadata.max_subsecond_precision;
 
     // Check if there are multiple SubSecond parts (still need to scan for this specific case)
     let has_multiple_subseconds = section
@@ -75,26 +74,23 @@ pub fn format_date(
     }
 
     // Get time components
-    // If there are subseconds, round to that precision to ensure proper carry-over
-    // (e.g., 35.9999 seconds with .0 precision becomes 36.0, not 35.0)
-    let (hour, minute, second) = if let Some(precision) = max_subsecond_precision {
-        // Round to subsecond precision
-        let fraction = adjusted_value.fract().abs();
-        let total_seconds = fraction * 86400.0;
+    let (mut hour, mut minute, mut second) = crate::date_serial::serial_to_time(adjusted_value);
 
-        // Round to the appropriate decimal place
-        let divisor = 10_f64.powi(precision as i32);
-        let rounded_seconds = (total_seconds * divisor).round() / divisor;
-        let total_seconds_int = rounded_seconds as u32;
+    // Calculate subsecond fractional part for pre-rounding
+    // SSF approach: apply pre-rounding based on smallest displayed time unit (bits/82_eval.js)
+    let fraction = adjusted_value.fract().abs();
+    let total_seconds = fraction * 86400.0;
+    let subseconds = total_seconds - total_seconds.floor();
 
-        let hour = (total_seconds_int / 3600) % 24;
-        let minute = (total_seconds_int % 3600) / 60;
-        let second = total_seconds_int % 60;
-        (hour, minute, second)
-    } else {
-        // No subseconds: use regular rounding
-        crate::date_serial::serial_to_time(adjusted_value)
-    };
+    // Apply pre-rounding based on smallest displayed time unit
+    // This ensures proper rounding behavior (e.g., 12:34:59.9 displayed as "hh:mm" shows "12:35")
+    apply_time_prerounding(
+        &mut hour,
+        &mut minute,
+        &mut second,
+        subseconds,
+        section.metadata.smallest_time_unit,
+    );
 
     // Get weekday (1=Sunday...7=Saturday)
     // Always calculate weekday based on serial value
@@ -318,6 +314,82 @@ fn format_ampm(style: AmPmStyle, hour: u32, locale: &Locale) -> String {
             let hour_12 = to_12_hour(hour);
             let digit = if hour_12 == 12 { '1' } else { '0' };
             format!("a{}/p", digit)
+        }
+    }
+}
+
+/// Apply pre-rounding to time components based on smallest displayed time unit.
+/// Based on SSF's eval_fmt in bits/82_eval.js lines 102-115.
+/// This ensures proper rounding when displaying limited time precision.
+fn apply_time_prerounding(
+    hour: &mut u32,
+    minute: &mut u32,
+    second: &mut u32,
+    subseconds: f64,
+    smallest_unit: crate::ast::TimeUnit,
+) {
+    use crate::ast::TimeUnit;
+
+    match smallest_unit {
+        TimeUnit::Hours => {
+            // Round subseconds -> seconds -> minutes -> hours
+            let mut sec = *second as i64;
+            let mut min = *minute as i64;
+            let mut hr = *hour as i64;
+
+            if subseconds >= 0.5 {
+                sec += 1;
+            }
+            if sec >= 60 {
+                sec = 0;
+                min += 1;
+            }
+            if min >= 60 {
+                min = 0;
+                hr += 1;
+            }
+            if hr >= 24 {
+                hr = hr % 24; // Wrap around if we overflow into next day
+            }
+
+            *hour = hr as u32;
+            *minute = min as u32;
+            *second = sec as u32;
+        }
+        TimeUnit::Minutes => {
+            // Round subseconds -> seconds -> minutes (don't carry to hours)
+            let mut sec = *second as i64;
+            let mut min = *minute as i64;
+
+            if subseconds >= 0.5 {
+                sec += 1;
+            }
+            if sec >= 60 {
+                sec = 0;
+                min += 1;
+            }
+            if min >= 60 {
+                min = min % 60; // Wrap around if we overflow
+            }
+
+            *minute = min as u32;
+            *second = sec as u32;
+        }
+        TimeUnit::Seconds => {
+            // Round subseconds -> seconds (don't carry to minutes)
+            let mut sec = *second as i64;
+
+            if subseconds >= 0.5 {
+                sec += 1;
+            }
+            if sec >= 60 {
+                sec = sec % 60; // Wrap around if we overflow
+            }
+
+            *second = sec as u32;
+        }
+        TimeUnit::Subseconds | TimeUnit::None => {
+            // No rounding needed
         }
     }
 }
