@@ -181,12 +181,22 @@ pub fn format_fraction(
         let num_str = format!("{}", num);
         let denom_str = format!("{}", denom);
 
-        // Check if this is a mixed or improper fraction
+        // Determine how to format the numerator based on fraction type
         if !integer_digits.is_empty() {
-            // This shouldn't happen (mixed fractions handled above), but just in case
+            // Mixed fraction with non-zero fractional part (e.g., "# ??/?????????" or "# ??/16")
+            // SSF uses pad_(ff[1], ri) - left-pad numerator to padding_width
+            let pad_width = if matches!(denominator, FractionDenom::UpToDigits(_)) {
+                padding_width as usize
+            } else {
+                // For fixed denominators, pad to numerator placeholder width
+                numerator_digits.len()
+            };
+            for _ in 0..pad_width.saturating_sub(num_str.len()) {
+                result.push(' ');
+            }
             result.push_str(&num_str);
         } else {
-            // Improper fraction: use numerator_digits placeholders
+            // Improper fraction: use numerator_digits placeholders (e.g., "#0#00??/??")
             // SSF uses write_num("n", r[1], ff[1]) - see bits/63_numflt.js line 47
             let formatted_num = format_fraction_part(num, numerator_digits);
             result.push_str(&formatted_num);
