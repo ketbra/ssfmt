@@ -304,52 +304,84 @@ fn format_ampm(style: AmPmStyle, hour: u32, locale: &Locale) -> String {
 
 /// Format elapsed time (total hours, minutes, or seconds).
 fn format_elapsed(part: ElapsedPart, serial_value: f64) -> String {
-    // Helper function to handle floating-point rounding errors
-    // If value is very close to an integer (within 1e-9), round to that integer
-    // Otherwise use floor for truncation
-    let smart_floor = |value: f64| -> i64 {
-        let floored = value.floor();
-        // Check if we're very close to the next integer (floating-point error)
-        if (value - floored - 1.0).abs() < 1e-9 {
-            (floored + 1.0) as i64
-        } else {
-            floored as i64
-        }
-    };
+    // SSF algorithm: parse serial into integer time components first, then calculate elapsed
+    // This matches Excel's behavior exactly
 
+    // Get integer and fractional parts
+    let mut date = serial_value.floor() as i64;
+    let frac = serial_value - date as f64;
+
+    // Calculate total seconds in the fractional day, floored to integer
+    let mut time_seconds = (86400.0 * frac).floor() as i64;
+
+    // Calculate subsecond fractional part
+    let mut subseconds = 86400.0 * frac - time_seconds as f64;
+
+    // Handle subsecond carry-over (SSF does this at line 8-10 of 35_datecode.js)
+    if subseconds > 0.9999 {
+        subseconds = 0.0;
+        time_seconds += 1;
+        if time_seconds == 86400 {
+            time_seconds = 0;
+            date += 1;
+        }
+    }
+
+    // Extract H, M, S components (all integers)
+    let mut seconds = time_seconds % 60;
+    let mut minutes = (time_seconds / 60) % 60;
+    let mut hours = time_seconds / 3600;
+
+    // SSF performs pre-rounding based on which time fields are present (lines 102-115 in 82_eval.js)
+    // This ensures that when displaying [m], we round up if seconds would round to 60
     match part {
-        ElapsedPart::Hours => {
-            // Total hours = serial_value * 24
-            // Use smart floor to handle floating-point precision
-            let total_hours = smart_floor(serial_value * 24.0);
-            format!("{}", total_hours)
+        ElapsedPart::Hours | ElapsedPart::Hours2 => {
+            // For hours format: round subseconds, then carry over through S -> M -> H
+            if subseconds >= 0.5 {
+                seconds += 1;
+            }
+            if seconds >= 60 {
+                seconds = 0;
+                minutes += 1;
+            }
+            if minutes >= 60 {
+                minutes = 0;
+                hours += 1;
+            }
+            // Total elapsed hours: D*24 + H (all integer arithmetic after rounding)
+            let total_hours = date * 24 + hours;
+            if matches!(part, ElapsedPart::Hours2) {
+                format!("{:02}", total_hours)
+            } else {
+                format!("{}", total_hours)
+            }
         }
-        ElapsedPart::Hours2 => {
-            // Total hours with zero-padding to 2 digits
-            let total_hours = smart_floor(serial_value * 24.0);
-            format!("{:02}", total_hours)
+        ElapsedPart::Minutes | ElapsedPart::Minutes2 => {
+            // For minutes format: round subseconds, then carry over S -> M (not to H)
+            if subseconds >= 0.5 {
+                seconds += 1;
+            }
+            if seconds >= 60 {
+                seconds = 0;
+                minutes += 1;
+            }
+            // Total elapsed minutes: (D*24+H)*60 + M (all integer arithmetic after rounding)
+            let total_minutes = (date * 24 + hours) * 60 + minutes;
+            if matches!(part, ElapsedPart::Minutes2) {
+                format!("{:02}", total_minutes)
+            } else {
+                format!("{}", total_minutes)
+            }
         }
-        ElapsedPart::Minutes => {
-            // Total minutes = serial_value * 24 * 60
-            // Use smart floor to handle floating-point precision
-            let total_minutes = smart_floor(serial_value * 24.0 * 60.0);
-            format!("{}", total_minutes)
-        }
-        ElapsedPart::Minutes2 => {
-            // Total minutes with zero-padding to 2 digits
-            let total_minutes = smart_floor(serial_value * 24.0 * 60.0);
-            format!("{:02}", total_minutes)
-        }
-        ElapsedPart::Seconds => {
-            // Total seconds = serial_value * 24 * 60 * 60
-            // Use smart floor to handle floating-point precision
-            let total_seconds = smart_floor(serial_value * 24.0 * 60.0 * 60.0);
-            format!("{}", total_seconds)
-        }
-        ElapsedPart::Seconds2 => {
-            // Total seconds with zero-padding to 2 digits
-            let total_seconds = smart_floor(serial_value * 24.0 * 60.0 * 60.0);
-            format!("{:02}", total_seconds)
+        ElapsedPart::Seconds | ElapsedPart::Seconds2 => {
+            // For seconds format: round S+u directly, no pre-rounding
+            // Total elapsed seconds: ((D*24+H)*60+M)*60 + round(S+u)
+            let total_seconds = ((date * 24 + hours) * 60 + minutes) * 60 + (seconds as f64 + subseconds).round() as i64;
+            if matches!(part, ElapsedPart::Seconds2) {
+                format!("{:02}", total_seconds)
+            } else {
+                format!("{}", total_seconds)
+            }
         }
     }
 }
