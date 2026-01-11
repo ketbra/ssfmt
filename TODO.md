@@ -162,8 +162,8 @@ pub fn format_with_placeholders(
 ## Low Priority (Micro-optimizations)
 
 ### 6. String Building Optimization
-**Status**: ⏳ Not started
-**Impact**: Minor performance improvement
+**Status**: ✅ COMPLETED
+**Impact**: Fixed O(n²) performance bugs
 **Effort**: Low
 
 **Current**:
@@ -217,6 +217,13 @@ write!(result, " {}/{}", num_str, denom_str)?;
 - Completed as part of Task #1
 - `is_hijri` field stored in SectionMetadata
 - No longer need to scan parts during formatting
+
+### ✅ Task #6: String Building Optimization
+- Fixed O(n²) insert(0) pattern in format_simple_with_placeholders()
+- Fixed O(n²) insert(0) pattern in format_integer()
+- Added exact capacity pre-allocation in build_result()
+- Changed from quadratic to linear time complexity
+- **Commit**: 03c5b33
 
 ---
 
