@@ -45,6 +45,7 @@
 //! ## Feature Flags
 //!
 //! - `chrono` (default) - Enable chrono type support
+//! - `bigint` - Enable BigInt support for arbitrary precision integers
 
 pub mod ast;
 pub mod builtin_formats;
@@ -132,4 +133,50 @@ pub fn format_with_id(
 pub fn format_with_id_default(value: f64, format_id: u32) -> Result<String, ParseError> {
     let opts = FormatOptions::default();
     format_with_id(value, format_id, &opts)
+}
+
+// BigInt convenience functions (requires `bigint` feature)
+
+/// Re-export BigInt type for convenience (requires `bigint` feature).
+#[cfg(feature = "bigint")]
+pub use num_bigint::BigInt;
+
+/// Format a BigInt value with a format code.
+///
+/// For values within f64's safe integer range (±2^53), converts to f64 and uses
+/// standard formatting. For larger values, uses string-based formatting to
+/// preserve precision.
+///
+/// This function caches recently used format codes for efficiency.
+///
+/// # Example
+/// ```ignore
+/// use ssfmt::{format_bigint, BigInt, FormatOptions};
+///
+/// let big = BigInt::parse_bytes(b"123456822333333000", 10).unwrap();
+/// let opts = FormatOptions::default();
+/// let result = format_bigint(&big, "#,##0", &opts).unwrap();
+/// assert_eq!(result, "123,456,822,333,333,000");
+/// ```
+#[cfg(feature = "bigint")]
+pub fn format_bigint(
+    value: &num_bigint::BigInt,
+    format_code: &str,
+    opts: &FormatOptions,
+) -> Result<String, ParseError> {
+    let fmt = cache::get_or_parse(format_code)?;
+    Ok(fmt.format_bigint(value, opts))
+}
+
+/// Format a BigInt value with a format code using default options.
+///
+/// Convenience wrapper around `format_bigint` using default options
+/// (1900 date system, en-US locale).
+#[cfg(feature = "bigint")]
+pub fn format_bigint_default(
+    value: &num_bigint::BigInt,
+    format_code: &str,
+) -> Result<String, ParseError> {
+    let opts = FormatOptions::default();
+    format_bigint(value, format_code, &opts)
 }

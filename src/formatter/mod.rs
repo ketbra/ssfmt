@@ -5,7 +5,14 @@ mod fraction;
 mod number;
 mod text;
 
+#[cfg(feature = "bigint")]
+mod bigint;
+
 pub use number::format_number;
+
+#[cfg(feature = "bigint")]
+#[allow(unused_imports)]
+pub use bigint::{format_bigint, fallback_format_bigint, is_safe_integer};
 
 use crate::ast::{FormatPart, NumberFormat, Section};
 use crate::error::FormatError;
@@ -190,6 +197,79 @@ impl NumberFormat {
 
         // Default: return text as-is
         text.to_string()
+    }
+
+    /// Format a BigInt value using this format code (requires `bigint` feature).
+    ///
+    /// For values within f64's safe integer range (±2^53), converts to f64 and uses
+    /// standard formatting. For larger values, uses string-based formatting to
+    /// preserve precision.
+    #[cfg(feature = "bigint")]
+    pub fn format_bigint(&self, value: &num_bigint::BigInt, opts: &FormatOptions) -> String {
+        match self.try_format_bigint(value, opts) {
+            Ok(result) => result,
+            Err(_) => bigint::fallback_format_bigint(value),
+        }
+    }
+
+    /// Try to format a BigInt value using this format code (requires `bigint` feature).
+    ///
+    /// For values within f64's safe integer range (±2^53), converts to f64 and uses
+    /// standard formatting. For larger values, uses string-based formatting to
+    /// preserve precision.
+    #[cfg(feature = "bigint")]
+    pub fn try_format_bigint(
+        &self,
+        value: &num_bigint::BigInt,
+        opts: &FormatOptions,
+    ) -> Result<String, FormatError> {
+        use num_bigint::Sign;
+
+        // Check if value is within safe f64 range
+        if bigint::is_safe_integer(value) {
+            // Convert to f64 and use standard formatting
+            let float_val: f64 = value.to_string().parse().unwrap_or(0.0);
+            return self.try_format(float_val, opts);
+        }
+
+        // For large integers, use string-based formatting
+        let is_negative = value.sign() == Sign::Minus;
+        let section = if is_negative {
+            // Select negative section if available
+            let sections = self.sections();
+            if sections.len() >= 2 {
+                &sections[1]
+            } else {
+                &sections[0]
+            }
+        } else {
+            &self.sections()[0]
+        };
+
+        // Handle "General" format (empty section with no parts)
+        if section.parts.is_empty() {
+            return Ok(bigint::fallback_format_bigint(value));
+        }
+
+        // Check if this is a date format - BigInt can't be used for dates
+        if section.has_date_parts() {
+            return Err(FormatError::TypeMismatch {
+                expected: "numeric format",
+                got: "date format with BigInt value",
+            });
+        }
+
+        // Format using BigInt-specific logic
+        let mut result = bigint::format_bigint(value, section, opts)?;
+
+        // Add minus sign for negative values in single-section formats
+        let sections = self.sections();
+        let has_numeric_parts = section.parts.iter().any(|p| p.is_numeric_part());
+        if sections.len() == 1 && is_negative && has_numeric_parts {
+            result.insert(0, '-');
+        }
+
+        Ok(result)
     }
 }
 

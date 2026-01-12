@@ -7,7 +7,7 @@ use crate::options::FormatOptions;
 
 /// Format a fraction part (numerator or denominator) with digit placeholders.
 /// Uses the unified placeholder formatting helper from number.rs.
-fn format_fraction_part(value: u32, placeholders: &[DigitPlaceholder]) -> String {
+fn format_fraction_part(value: u64, placeholders: &[DigitPlaceholder]) -> String {
     format_simple_with_placeholders(value, placeholders)
 }
 
@@ -113,7 +113,7 @@ pub fn format_fraction(
         if integer_part > 0 || num == 0 {
             // Format integer with digit placeholders
             let int_str = if !integer_digits.is_empty() {
-                format_fraction_part(integer_part as u32, integer_digits)
+                format_fraction_part(integer_part as u64, integer_digits)
             } else {
                 format!("{}", integer_part)
             };
@@ -169,7 +169,7 @@ pub fn format_fraction(
         } else {
             // Improper fraction: use numerator_digits placeholders (e.g., "#0#00??/??")
             // SSF uses write_num("n", r[1], ff[1]) - see bits/63_numflt.js line 47
-            let formatted_num = format_fraction_part(num, numerator_digits);
+            let formatted_num = format_fraction_part(num as u64, numerator_digits);
             result.push_str(&formatted_num);
         }
 

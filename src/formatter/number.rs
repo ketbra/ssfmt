@@ -8,7 +8,7 @@ use crate::options::FormatOptions;
 /// Based on SSF's write_num helper in bits/59_numhelp.js.
 /// Maps digits to placeholders from right to left, using placeholder padding for missing digits.
 pub(crate) fn format_simple_with_placeholders(
-    value: u32,
+    value: u64,
     placeholders: &[DigitPlaceholder],
 ) -> String {
     if placeholders.is_empty() {
@@ -375,8 +375,11 @@ pub fn format_number(
     }
 
     // Round to the required decimal places
+    // Use limited precision rounding to avoid overflow with large decimal_places
+    // f64 has ~15-16 significant digits, so clamping to 15 decimal places is safe
     let decimal_places = analysis.decimal_places();
-    let multiplier = 10_f64.powi(decimal_places as i32);
+    let effective_decimal_places = decimal_places.min(15);
+    let multiplier = 10_f64.powi(effective_decimal_places as i32);
     let rounded = (adjusted_value * multiplier).round() / multiplier;
 
     // Format the number with placeholders

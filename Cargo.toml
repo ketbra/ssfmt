@@ -11,6 +11,7 @@ categories = ["parsing", "text-processing"]
 [dependencies]
 chrono = { version = "0.4", optional = true, default-features = false, features = ["std"] }
 lru = "0.16"
+num-bigint = { version = "0.4", optional = true }
 thiserror = "2.0"
 
 [dev-dependencies]
@@ -21,3 +22,4 @@ flate2 = "1.0"
 [features]
 default = ["chrono"]
 chrono = ["dep:chrono"]
+bigint = ["dep:num-bigint"]

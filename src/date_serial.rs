@@ -140,9 +140,12 @@ fn serial_to_time_impl(serial: f64, round_seconds: bool) -> (u32, u32, u32) {
         // Excel rounds seconds when displaying time without subseconds
         (fraction * 86400.0).round() as u32
     } else {
-        // Truncate when format includes subsecond display
-        // This allows .0, .00, etc. to show the fractional part correctly
-        (fraction * 86400.0) as u32
+        // For subsecond display, round to millisecond precision first to handle
+        // floating point errors (e.g., 0.7 is stored as 0.69999... in f64),
+        // then truncate to get the integer seconds.
+        // This ensures 0.7 displays as 16:48:00.000 not 16:47:59.999
+        let total_with_subseconds = (fraction * 86400.0 * 1000.0).round() / 1000.0;
+        total_with_subseconds as u32
     };
 
     let hours = (total_seconds / 3600) % 24;
