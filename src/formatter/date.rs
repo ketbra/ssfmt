@@ -52,24 +52,29 @@ pub fn format_date(
     };
 
     // Apply Hijri calendar conversion if B2 prefix is used
-    // SSF fix_hijri: subtracts 581 from year, handles special cases for day 0 and 60
-    // See /tmp/ssf/bits/45_hijri.js and bits/35_datecode.js lines 12-13
+    // Use the Kuwaiti algorithm for proper date conversion
     if is_hijri {
         let days = value.floor() as i64;
         if days == 60 {
-            // Special case for Excel's fake leap day
+            // Special case for Excel's fake leap day (Feb 29, 1900)
+            // This date doesn't exist in the Gregorian calendar
+            // SSF hardcodes this to 1317-10-29
             year = 1317;
             month = 10;
             day = 29;
         } else if days == 0 {
-            // Special case for day 0
+            // Special case for day 0 (Dec 31, 1899 in Excel's calendar)
+            // SSF hardcodes this to 1317-08-29
             year = 1317;
             month = 8;
             day = 29;
         } else {
-            // Regular conversion: subtract 581 from year
-            // Note: SSF has TODO to "properly adjust y/m/d" - this is incomplete
-            year -= 581;
+            // For all other dates, use proper Hijri calendar conversion
+            let (hijri_year, hijri_month, hijri_day) =
+                crate::hijri::gregorian_to_hijri(year, month, day);
+            year = hijri_year;
+            month = hijri_month;
+            day = hijri_day;
         }
     }
 

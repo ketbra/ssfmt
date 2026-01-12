@@ -54,6 +54,7 @@ pub mod options;
 pub mod value;
 
 pub mod date_serial;
+mod hijri;
 
 mod cache;
 mod formatter;

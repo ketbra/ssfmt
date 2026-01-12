@@ -517,24 +517,21 @@ fn format_integer(
         return result;
     }
 
-    // Check if placeholder types are heavily interspersed (e.g., 000#0#0#0##00##)
-    // by counting transitions between different placeholder types
-    // Only treat as interspersed if there are many transitions (complex format)
-    let mut transitions = 0;
-    for i in 1..placeholders.len() {
-        if placeholders[i] != placeholders[i - 1] {
-            transitions += 1;
-        }
-    }
-    let has_interspersed_placeholders = transitions > 1;
-
-    let output_len = if has_interspersed_placeholders {
-        // Interspersed placeholders: add zero count to value digits
-        // This handles formats like #0####### where placeholders are mixed
-        value_digits.len() + min_digits
-    } else {
-        // Consecutive placeholders of same type: use maximum of value digits and required placeholders
+    // SSF has different logic based on whether the format includes thousands separators
+    // For formats WITHOUT thousands separators (e.g., "0#######0"):
+    //   - Output length = max(value_digits, total_placeholders)
+    //   - Pad using "hashq" logic: 0->'0', #->skip, ?->' '
+    //   - This matches SSF's bits/66_numint.js line 69-73 for ^([#0]+)\.([#0]+)$ patterns
+    // For formats WITH thousands separators (e.g., "#,###"):
+    //   - Use SSF's commaify approach which formats the number then adds separators
+    //   - Only show digits that fit the placeholder pattern
+    let output_len = if use_thousands {
+        // With thousands separators: use the narrower width to avoid spurious separators
+        // This matches SSF's behavior for patterns like #{1,3},##0
         value_digits.len().max(min_digits)
+    } else {
+        // Without thousands separators: use the full pattern width
+        value_digits.len().max(placeholders.len())
     };
 
     // Build right-to-left into Vec, then reverse once (O(n) instead of O(n²) with insert(0))
@@ -572,19 +569,20 @@ fn format_integer(
         if digit_index >= 0 {
             // We have a digit from the value
             chars.push(value_digits[digit_index as usize]);
-        } else if has_interspersed_placeholders {
-            // For interspersed placeholders, padding positions use zeros
-            // We've already calculated output_len = value_digits + zero_count
-            // So all padding positions get '0'
-            chars.push('0');
         } else {
-            // For consecutive placeholders, check placeholder for padding character
+            // No digit from value - apply SSF "hashq" padding logic
+            // Use the placeholder at this position to determine padding character:
+            //   0 (Zero) -> '0'
+            //   # (Hash) -> nothing (skip)
+            //   ? (Question) -> ' '
             let placeholder_index = placeholders.len() as isize - 1 - pos_from_right as isize;
             if placeholder_index >= 0 {
                 let placeholder = placeholders[placeholder_index as usize];
+                // empty_char returns Some('0') for Zero, None for Hash, Some(' ') for Question
                 if let Some(c) = placeholder.empty_char() {
                     chars.push(c);
                 }
+                // If None (Hash), we don't push anything - this truncates the output
             }
         }
     }
@@ -626,9 +624,10 @@ fn format_decimal(
         return String::new();
     }
 
-    // Clamp to maximum precision to avoid overflow (f64 has ~15-16 significant digits)
-    // This prevents overflow when casting to u64 with excessive decimal placeholders
-    let effective_places = placeholders.len().min(15);
+    // Match SSF behavior: clamp decimal places to 10 (bits/66_numint.js line 70)
+    // This avoids floating-point precision issues when multiplying by large powers of 10
+    // SSF uses Math.min(r[2].length, 10) where r[2] is the decimal placeholder count
+    let effective_places = placeholders.len().min(10);
 
     // Get the decimal digits by multiplying and truncating
     let multiplier = 10_f64.powi(effective_places as i32);
@@ -637,19 +636,32 @@ fn format_decimal(
     let decimal_chars: Vec<char> = decimal_str.chars().collect();
 
     let mut result = String::new();
-    let mut trailing_zeros_start = placeholders.len();
+
+    // Check if the entire decimal part is zeros (matches SSF behavior)
+    // SSF strips all trailing zeros with regex /([^0])0+$/ before applying format
+    let all_zeros = decimal_chars.iter().all(|&c| c == '0');
 
     // Find where trailing zeros start (for # placeholders)
+    // If all zeros, start from position 0 (all Hash placeholders are skipped)
+    // Otherwise, scan backwards to find trailing zeros
+    let mut trailing_zeros_start = if all_zeros {
+        0
+    } else {
+        placeholders.len()
+    };
+
     // Only scan within effective_places to avoid index out of bounds
-    for i in (0..placeholders.len().min(effective_places)).rev() {
-        if decimal_chars.get(i) == Some(&'0') {
-            if !placeholders[i].is_required() {
-                trailing_zeros_start = i;
+    if !all_zeros {
+        for i in (0..placeholders.len().min(effective_places)).rev() {
+            if decimal_chars.get(i) == Some(&'0') {
+                if !placeholders[i].is_required() {
+                    trailing_zeros_start = i;
+                } else {
+                    break;
+                }
             } else {
                 break;
             }
-        } else {
-            break;
         }
     }
 
@@ -662,15 +674,26 @@ fn format_decimal(
             }
         }
 
-        // For placeholders beyond effective precision, use '0'
+        // Get the character for this position
         let ch = if i < effective_places {
             decimal_chars.get(i).copied().unwrap_or('0')
         } else {
-            '0'
+            // Beyond effective precision: apply SSF "hashq" logic
+            // Hash (#) -> skip (no output)
+            // Zero (0) -> '0'
+            // Question (?) -> ' '
+            match placeholder {
+                DigitPlaceholder::Hash => {
+                    // Skip - don't add anything
+                    continue;
+                }
+                DigitPlaceholder::Zero => '0',
+                DigitPlaceholder::Question => ' ',
+            }
         };
 
         if i >= trailing_zeros_start && ch == '0' && !placeholder.is_required() {
-            // Skip trailing zeros for # placeholders
+            // Skip trailing zeros for # placeholders (only within effective_places)
             if matches!(placeholder, DigitPlaceholder::Question) {
                 result.push(' ');
             }
