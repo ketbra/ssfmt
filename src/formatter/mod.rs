@@ -277,8 +277,8 @@ impl NumberFormat {
 ///
 /// Implements Excel's "General" number format behavior:
 /// - Very small numbers (0 < |x| < 1E-4) use scientific notation
-/// - Very large numbers (|x| >= 1E11) use scientific notation
-/// - Up to 11 significant digits total (including decimal point)
+/// - Exact integers within safe range are displayed without scientific notation
+/// - Floating point numbers with many significant digits may use scientific notation
 /// - No trailing zeros after decimal point
 pub fn fallback_format(value: f64) -> String {
     // Handle zero
@@ -289,12 +289,15 @@ pub fn fallback_format(value: f64) -> String {
     // Integer fast path: check if value is a whole integer
     // This avoids expensive log10() and format!() operations for common integer values
     // Safe integer range for f64 is < 2^53 (9007199254740992)
+    // Excel displays exact integers without scientific notation (scientific notation
+    // is only used for display width reasons, which we don't have here)
+    const MAX_SAFE_INTEGER: u64 = 9007199254740992; // 2^53
     let int_val = value.trunc() as i64;
     if (value - int_val as f64).abs() < f64::EPSILON && value.abs() >= 1.0 {
         let abs_int = int_val.unsigned_abs();
-        // Excel's General format shows up to 11 digits before switching to scientific
-        if abs_int < 100_000_000_000 {
-            // 11 digits max
+        // For exact integers within the safe f64 range, display without scientific notation
+        // This matches Excel's behavior where General format shows integers as-is
+        if abs_int < MAX_SAFE_INTEGER {
             return if value < 0.0 {
                 format!("-{}", abs_int)
             } else {
@@ -305,14 +308,15 @@ pub fn fallback_format(value: f64) -> String {
 
     let abs_value = value.abs();
 
-    // Excel's General format uses scientific notation based on magnitude and precision:
-    // 1. Very small: 0 < |x| < 1E-9 -> scientific
-    // 2. Very large: |x| >= 1E11 -> scientific
-    // 3. In between but many sig figs: also scientific
-    // The rule seems to be: values < 1E-9 OR values with >11 significant figures
+    // At this point, we're dealing with non-integer values (integers handled above)
+    // For non-integer values, use scientific notation for:
+    // 1. Very small numbers (< 0.0001) that would have too many leading zeros
+    // 2. Very large non-integer values (>= 1E11) where precision is limited anyway
+    // Note: Exact integers are handled above and never use scientific notation
 
     // Check if we should use scientific notation
     let use_scientific = if abs_value >= 1e11 {
+        // Large non-integer values use scientific notation
         true
     } else if abs_value > 0.0 && abs_value < 0.0001 {
         // For very small numbers (< 0.0001), check if decimal representation fits in 11 chars
