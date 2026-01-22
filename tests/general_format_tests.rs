@@ -78,3 +78,45 @@ fn test_general_format_vs_broken_behavior() {
     assert_ne!(result, "General");
     assert_eq!(result, "1234.56");
 }
+
+#[test]
+fn test_general_format_large_integers_no_scientific() {
+    // Excel's General format displays exact integers without scientific notation
+    // These tests verify that large integers are displayed as-is
+
+    // The value from the bug report
+    assert_eq!(format_default(484079807176.0, "General").unwrap(), "484079807176");
+
+    // Values around the old 1e11 threshold
+    assert_eq!(format_default(100000000000.0, "General").unwrap(), "100000000000");
+    assert_eq!(format_default(99999999999.0, "General").unwrap(), "99999999999");
+    assert_eq!(format_default(100000000001.0, "General").unwrap(), "100000000001");
+
+    // Larger exact integers (within safe f64 range)
+    assert_eq!(format_default(1000000000000.0, "General").unwrap(), "1000000000000");
+    assert_eq!(format_default(9007199254740991.0, "General").unwrap(), "9007199254740991"); // 2^53 - 1
+
+    // Negative large integers
+    assert_eq!(format_default(-484079807176.0, "General").unwrap(), "-484079807176");
+    assert_eq!(format_default(-100000000000.0, "General").unwrap(), "-100000000000");
+}
+
+#[test]
+fn test_text_format_large_integers_no_scientific() {
+    // The @ format means "text" and should display numbers as-is without scientific notation
+
+    // The value from the bug report
+    assert_eq!(format_default(484079807176.0, "@").unwrap(), "484079807176");
+
+    // Values around the old 1e11 threshold
+    assert_eq!(format_default(100000000000.0, "@").unwrap(), "100000000000");
+    assert_eq!(format_default(99999999999.0, "@").unwrap(), "99999999999");
+    assert_eq!(format_default(100000000001.0, "@").unwrap(), "100000000001");
+
+    // Larger exact integers
+    assert_eq!(format_default(1000000000000.0, "@").unwrap(), "1000000000000");
+
+    // Negative large integers
+    assert_eq!(format_default(-484079807176.0, "@").unwrap(), "-484079807176");
+    assert_eq!(format_default(-100000000000.0, "@").unwrap(), "-100000000000");
+}
